@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --primary: #0ea5e9;
+  --primary-foreground: #ffffff;
+  --secondary: #334155;
+  --secondary-foreground: #e2e8f0;
+  --muted: #475569;
+  --muted-foreground: #94a3b8;
+  --accent: #7c3aed;
+  --accent-foreground: #ffffff;
+  --border: #334155;
+  --ring: #0ea5e9;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary);
+}
+
+/* Code blocks */
+code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background-color: var(--card) !important;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+/* Markdown content */
+.markdown-content h1 {
+  @apply text-2xl font-bold mb-4 text-white;
+}
+
+.markdown-content h2 {
+  @apply text-xl font-bold mb-3 mt-6 text-white;
+}
+
+.markdown-content h3 {
+  @apply text-lg font-semibold mb-2 mt-4 text-white;
+}
+
+.markdown-content p {
+  @apply mb-4 text-gray-300 leading-relaxed;
+}
+
+.markdown-content ul {
+  @apply mb-4 pl-6 list-disc;
+}
+
+.markdown-content ol {
+  @apply mb-4 pl-6 list-decimal;
+}
+
+.markdown-content li {
+  @apply mb-1 text-gray-300;
+}
+
+.markdown-content table {
+  @apply w-full mb-4 border-collapse;
+}
+
+.markdown-content th {
+  @apply text-left p-2 border-b border-gray-600 text-white bg-gray-800;
+}
+
+.markdown-content td {
+  @apply p-2 border-b border-gray-700 text-gray-300;
+}
+
+.markdown-content blockquote {
+  @apply border-l-4 border-nexen-500 pl-4 italic text-gray-400 my-4;
+}
+
+.markdown-content a {
+  @apply text-nexen-400 hover:text-nexen-300 underline;
+}
+
+/* Agent status indicators */
+.agent-status-idle {
+  @apply bg-gray-500;
+}
+
+.agent-status-running {
+  @apply bg-green-500 animate-pulse;
+}
+
+.agent-status-completed {
+  @apply bg-blue-500;
+}
+
+.agent-status-failed {
+  @apply bg-red-500;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #0ea5e9, #7c3aed);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Loading animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--card) 25%,
+    var(--secondary) 50%,
+    var(--card) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
