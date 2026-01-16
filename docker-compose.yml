@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   # Backend API
   backend:
     build:
-      context: ./web/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: web/backend/Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -16,7 +14,6 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     volumes:
       - ./research_workspace:/app/research_workspace
-      - ./nexen:/app/nexen:ro
     depends_on:
       - postgres
       - redis
@@ -54,19 +51,6 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
-
-  # Nginx Reverse Proxy (optional, for production)
-  # nginx:
-  #   image: nginx:alpine
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
-  #   depends_on:
-  #     - backend
-  #     - frontend
-  #   restart: unless-stopped
 
 volumes:
   postgres_data:
