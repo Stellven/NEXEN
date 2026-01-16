@@ -7,16 +7,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://nexen:nexen@postgres:5432/nexen
-      - REDIS_URL=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - SECRET_KEY=${SECRET_KEY:-nexen-dev-secret-change-in-production}
     volumes:
       - ./research_workspace:/app/research_workspace
-    depends_on:
-      - postgres
-      - redis
+      - sqlite_data:/app/data
     restart: unless-stopped
 
   # Frontend
@@ -27,30 +21,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - API_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped
 
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_USER=nexen
-      - POSTGRES_PASSWORD=nexen
-      - POSTGRES_DB=nexen
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
-
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    restart: unless-stopped
-
 volumes:
-  postgres_data:
+  sqlite_data:

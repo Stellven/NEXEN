@@ -2,6 +2,7 @@
 Model configuration and routing rules for NEXEN.
 
 Optimized for three providers: OpenAI, Anthropic (Claude), and Google (Gemini).
+All model IDs use LiteLLM format: provider/model-name
 """
 
 from dataclasses import dataclass, field
@@ -42,7 +43,7 @@ class Language(str, Enum):
 class ModelConfig:
     """Configuration for a specific model."""
 
-    model_id: str
+    model_id: str  # LiteLLM format: provider/model-name
     provider: str
     display_name: str
     max_tokens: int = 4096
@@ -57,112 +58,131 @@ class ModelConfig:
 
 
 # =============================================================================
-# Model Definitions (Only OpenAI, Anthropic, Google)
+# Model Definitions (LiteLLM format: provider/model-name)
 # =============================================================================
 
 MODELS: dict[str, ModelConfig] = {
     # -------------------------------------------------------------------------
     # OpenAI Models
     # -------------------------------------------------------------------------
-    "openai/o3": ModelConfig(
-        model_id="o3",
-        provider="openai",
-        display_name="OpenAI o3",
-        max_tokens=8192,
-        cost_tier=4,
-        fallback="claude-opus-4",
-    ),
-    "openai/o3-mini": ModelConfig(
-        model_id="o3-mini",
-        provider="openai",
-        display_name="OpenAI o3-mini",
-        max_tokens=8192,
-        cost_tier=3,
-        fallback="claude-sonnet-4",
-    ),
-    "gpt-4o": ModelConfig(
-        model_id="gpt-4o",
+    "openai/gpt-4o": ModelConfig(
+        model_id="openai/gpt-4o",
         provider="openai",
         display_name="GPT-4o",
         max_tokens=4096,
         supports_vision=True,
         cost_tier=2,
-        fallback="claude-sonnet-4",
+        fallback="anthropic/claude-3-5-sonnet-20241022",
     ),
-    "gpt-4o-mini": ModelConfig(
-        model_id="gpt-4o-mini",
+    "openai/gpt-4o-mini": ModelConfig(
+        model_id="openai/gpt-4o-mini",
         provider="openai",
         display_name="GPT-4o Mini",
         max_tokens=4096,
         supports_vision=True,
         cost_tier=1,
-        fallback="gemini-2-flash",
+        fallback="google/gemini-2.0-flash",
+    ),
+    "openai/o1": ModelConfig(
+        model_id="openai/o1",
+        provider="openai",
+        display_name="OpenAI o1",
+        max_tokens=8192,
+        cost_tier=4,
+        fallback="anthropic/claude-3-5-sonnet-20241022",
+    ),
+    "openai/o1-mini": ModelConfig(
+        model_id="openai/o1-mini",
+        provider="openai",
+        display_name="OpenAI o1-mini",
+        max_tokens=8192,
+        cost_tier=3,
+        fallback="anthropic/claude-3-5-sonnet-20241022",
     ),
 
     # -------------------------------------------------------------------------
     # Anthropic Models
     # -------------------------------------------------------------------------
-    "claude-opus-4": ModelConfig(
-        model_id="claude-opus-4-20250514",
+    "anthropic/claude-3-5-sonnet-20241022": ModelConfig(
+        model_id="anthropic/claude-3-5-sonnet-20241022",
         provider="anthropic",
-        display_name="Claude Opus 4",
-        max_tokens=8192,
-        cost_tier=4,
-        fallback="gpt-4o",
-    ),
-    "claude-sonnet-4": ModelConfig(
-        model_id="claude-sonnet-4-20250514",
-        provider="anthropic",
-        display_name="Claude Sonnet 4",
+        display_name="Claude 3.5 Sonnet",
         max_tokens=8192,
         supports_vision=True,
         cost_tier=2,
-        fallback="gpt-4o",
+        fallback="openai/gpt-4o",
     ),
-    "claude-haiku-3": ModelConfig(
-        model_id="claude-3-haiku-20240307",
+    "anthropic/claude-3-opus-20240229": ModelConfig(
+        model_id="anthropic/claude-3-opus-20240229",
         provider="anthropic",
-        display_name="Claude Haiku 3",
+        display_name="Claude 3 Opus",
+        max_tokens=4096,
+        supports_vision=True,
+        cost_tier=4,
+        fallback="openai/gpt-4o",
+    ),
+    "anthropic/claude-3-haiku-20240307": ModelConfig(
+        model_id="anthropic/claude-3-haiku-20240307",
+        provider="anthropic",
+        display_name="Claude 3 Haiku",
         max_tokens=4096,
         cost_tier=1,
-        fallback="gpt-4o-mini",
+        fallback="openai/gpt-4o-mini",
     ),
 
     # -------------------------------------------------------------------------
     # Google Models
     # -------------------------------------------------------------------------
-    "gemini-2-pro": ModelConfig(
-        model_id="gemini-2.0-pro",
+    "google/gemini-2.0-pro": ModelConfig(
+        model_id="google/gemini-2.0-pro",
         provider="google",
         display_name="Gemini 2 Pro",
         max_tokens=8192,
         supports_vision=True,
         cost_tier=2,
-        fallback="claude-sonnet-4",
+        fallback="anthropic/claude-3-5-sonnet-20241022",
     ),
-    "gemini-2-flash": ModelConfig(
-        model_id="gemini-2.0-flash",
+    "google/gemini-2.0-flash": ModelConfig(
+        model_id="google/gemini-2.0-flash",
         provider="google",
         display_name="Gemini 2 Flash",
         max_tokens=8192,
         supports_vision=True,
         cost_tier=1,
-        fallback="gpt-4o-mini",
+        fallback="openai/gpt-4o-mini",
     ),
-    "gemini-1.5-pro": ModelConfig(
-        model_id="gemini-1.5-pro",
+    "google/gemini-1.5-pro": ModelConfig(
+        model_id="google/gemini-1.5-pro",
         provider="google",
         display_name="Gemini 1.5 Pro",
         max_tokens=8192,
         supports_vision=True,
         cost_tier=2,
-        fallback="claude-sonnet-4",
+        fallback="anthropic/claude-3-5-sonnet-20241022",
     ),
 }
 
+# Simplified aliases for easier reference
+MODEL_ALIASES = {
+    "gpt-4o": "openai/gpt-4o",
+    "gpt-4o-mini": "openai/gpt-4o-mini",
+    "o1": "openai/o1",
+    "o1-mini": "openai/o1-mini",
+    "claude-sonnet": "anthropic/claude-3-5-sonnet-20241022",
+    "claude-opus": "anthropic/claude-3-opus-20240229",
+    "claude-haiku": "anthropic/claude-3-haiku-20240307",
+    "gemini-pro": "google/gemini-2.0-pro",
+    "gemini-flash": "google/gemini-2.0-flash",
+}
+
+
+def resolve_model(model_name: str) -> str:
+    """Resolve model alias to full LiteLLM model ID."""
+    return MODEL_ALIASES.get(model_name, model_name)
+
 
 # =============================================================================
-# Routing Rules (Updated for 3 providers only)
+# Routing Rules (Updated for LiteLLM format)
 # =============================================================================
 
 @dataclass
@@ -177,93 +197,99 @@ class RoutingRule:
 # Task type to model routing
 TASK_TYPE_ROUTING: dict[TaskType, RoutingRule] = {
     TaskType.MATH_REASONING: RoutingRule(
-        primary="openai/o3",
-        fallback="claude-opus-4",
-        reason="o3 has strongest mathematical reasoning capabilities",
+        primary="openai/o1",
+        fallback="anthropic/claude-3-opus-20240229",
+        reason="o1 has strongest mathematical reasoning capabilities",
     ),
     TaskType.LOGIC_PROOF: RoutingRule(
-        primary="openai/o3",
-        fallback="claude-opus-4",
-        reason="o3 excels at formal logic and proofs",
+        primary="openai/o1",
+        fallback="anthropic/claude-3-opus-20240229",
+        reason="o1 excels at formal logic and proofs",
     ),
     TaskType.CODE_GENERATION: RoutingRule(
-        primary="claude-sonnet-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-5-sonnet-20241022",
+        fallback="openai/gpt-4o",
         reason="Claude produces high-quality, well-documented code",
     ),
     TaskType.CODE_REVIEW: RoutingRule(
-        primary="claude-sonnet-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-5-sonnet-20241022",
+        fallback="openai/gpt-4o",
         reason="Claude is thorough in code review",
     ),
     TaskType.CRITIQUE: RoutingRule(
-        primary="openai/o3-mini",
-        fallback="claude-sonnet-4",
-        reason="o3-mini is fast and effective for critique",
+        primary="openai/o1-mini",
+        fallback="anthropic/claude-3-5-sonnet-20241022",
+        reason="o1-mini is fast and effective for critique",
     ),
     TaskType.COMPLEX_PLANNING: RoutingRule(
-        primary="claude-opus-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-opus-20240229",
+        fallback="openai/gpt-4o",
         reason="Opus excels at long-horizon planning",
     ),
     TaskType.GENEALOGY: RoutingRule(
-        primary="claude-opus-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-opus-20240229",
+        fallback="openai/gpt-4o",
         reason="Complex reasoning needed for tracing lineages",
     ),
     TaskType.HISTORY_ANALYSIS: RoutingRule(
-        primary="claude-opus-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-opus-20240229",
+        fallback="openai/gpt-4o",
         reason="Deep analysis of technical evolution",
     ),
     TaskType.PAPER_ANALYSIS: RoutingRule(
-        primary="claude-sonnet-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-5-sonnet-20241022",
+        fallback="openai/gpt-4o",
         reason="Good balance of depth and speed",
     ),
-    # Social media now uses GPT-4o (which has web browsing in ChatGPT)
     TaskType.SOCIAL_MEDIA: RoutingRule(
-        primary="gpt-4o",
-        fallback="gemini-2-pro",
+        primary="openai/gpt-4o",
+        fallback="google/gemini-2.0-pro",
         reason="GPT-4o with web search for social media monitoring",
     ),
-    # Chinese content: Claude and GPT-4o both handle Chinese well
     TaskType.CHINESE_CONTENT: RoutingRule(
-        primary="claude-sonnet-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-5-sonnet-20241022",
+        fallback="openai/gpt-4o",
         reason="Claude handles Chinese content effectively",
     ),
     TaskType.IMAGE_ANALYSIS: RoutingRule(
-        primary="gemini-2-pro",
-        fallback="gpt-4o",
+        primary="google/gemini-2.0-pro",
+        fallback="openai/gpt-4o",
         reason="Gemini has strongest vision capabilities",
     ),
     TaskType.WRITING: RoutingRule(
-        primary="claude-sonnet-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-5-sonnet-20241022",
+        fallback="openai/gpt-4o",
         reason="Claude produces high-quality academic writing",
     ),
     TaskType.SUMMARIZATION: RoutingRule(
-        primary="claude-sonnet-4",
-        fallback="gemini-2-flash",
+        primary="anthropic/claude-3-5-sonnet-20241022",
+        fallback="google/gemini-2.0-flash",
         reason="Good at extracting key information",
     ),
     TaskType.PROMPT_GENERATION: RoutingRule(
-        primary="gemini-2-pro",
-        fallback="claude-sonnet-4",
+        primary="google/gemini-2.0-pro",
+        fallback="anthropic/claude-3-5-sonnet-20241022",
         reason="Gemini optimized for prompt engineering",
     ),
     TaskType.GENERAL: RoutingRule(
-        primary="claude-sonnet-4",
-        fallback="gpt-4o",
+        primary="anthropic/claude-3-5-sonnet-20241022",
+        fallback="openai/gpt-4o",
         reason="Best general-purpose model",
     ),
 }
 
-# Language-specific routing overrides (only using 3 providers)
+# Language-specific routing overrides
 LANGUAGE_ROUTING: dict[Language, list[str]] = {
-    Language.CHINESE: ["claude-sonnet-4", "gpt-4o", "gemini-2-pro"],
-    Language.ENGLISH: ["claude-sonnet-4", "gpt-4o", "gemini-2-pro"],
+    Language.CHINESE: [
+        "anthropic/claude-3-5-sonnet-20241022",
+        "openai/gpt-4o",
+        "google/gemini-2.0-pro",
+    ],
+    Language.ENGLISH: [
+        "anthropic/claude-3-5-sonnet-20241022",
+        "openai/gpt-4o",
+        "google/gemini-2.0-pro",
+    ],
 }
 
 

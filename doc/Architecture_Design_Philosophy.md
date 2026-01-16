@@ -16,6 +16,13 @@
 6. [技术实现路线图](#6-技术实现路线图)
 7. [总结与展望](#7-总结与展望)
 
+**相关文档**:
+- [知识库架构设计](./Knowledge_Base_Architecture.md) - 支撑深度推理的知识库设计
+- [提示词工程系统](./Prompt_Engineering_System.md) - 4-D方法论与多元思维模式
+- [Agent配置详解](./Agent_Configurations.md) - 各Agent配置参数
+- [技能参考手册](./Skills_Reference.md) - 所有技能的使用方法
+- [外化记忆系统](./Memory_System.md) - 记忆系统设计
+
 ---
 
 ## 1. 设计背景与问题分析

@@ -10,7 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.api import research, sessions, agents, knowledge, skills
+from app.api import auth as auth_api
+from app.api import user_settings as settings_api
 from app.websocket import router as ws_router
+from app.db.database import init_db
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +33,10 @@ async def lifespan(app: FastAPI):
     # Initialize workspace
     settings.nexen_workspace.mkdir(parents=True, exist_ok=True)
     
+    # Initialize database
+    init_db()
+    logger.info("Database initialized")
+    
     yield
     
     logger.info("Shutting down...")
@@ -42,7 +49,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         description="NEXEN Multi-Agent Research Assistant Web API",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
@@ -54,6 +61,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Auth Routes (no prefix for /api/auth)
+    app.include_router(auth_api.router, prefix=f"{settings.api_prefix}/auth", tags=["auth"])
+    app.include_router(settings_api.router, prefix=f"{settings.api_prefix}/settings", tags=["settings"])
 
     # API Routes
     app.include_router(research.router, prefix=f"{settings.api_prefix}/research", tags=["research"])
@@ -69,8 +80,9 @@ def create_app() -> FastAPI:
     async def root():
         return {
             "name": settings.app_name,
-            "version": "0.1.0",
+            "version": "0.2.0",
             "status": "running",
+            "features": ["multi-user", "auth", "api-keys"],
         }
 
     @app.get("/health")
