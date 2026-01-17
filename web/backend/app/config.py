@@ -36,6 +36,12 @@ class Settings(BaseSettings):
         alias="REDIS_URL",
     )
 
+    # Qdrant Vector Database
+    qdrant_url: str = Field(
+        default="http://localhost:6333",
+        alias="QDRANT_URL",
+    )
+
     # Auth
     secret_key: str = Field(
         default="your-secret-key-change-in-production",

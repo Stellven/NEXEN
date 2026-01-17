@@ -47,6 +47,12 @@ dependencies = [
     "tiktoken>=0.8.0",  # Token counting
     "tenacity>=9.0.0",  # Retry logic
     "structlog>=24.4.0",  # Structured logging
+
+    # Document Parsing (My Library)
+    "PyMuPDF>=1.23.0",  # PDF parsing
+    "python-docx>=1.1.0",  # DOCX parsing
+    "trafilatura>=1.6.0",  # URL content extraction
+    "python-multipart>=0.0.6",  # File uploads
 ]
 
 [project.optional-dependencies]

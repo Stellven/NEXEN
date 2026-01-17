@@ -20,7 +20,14 @@ RUN pip install --no-cache-dir \
     passlib[bcrypt]>=1.7.4 \
     litellm>=1.50.0 \
     pyyaml>=6.0 \
-    email-validator>=2.0.0
+    email-validator>=2.0.0 \
+    openai>=1.0.0 \
+    qdrant-client>=1.12.0 \
+    PyMuPDF>=1.23.0 \
+    python-docx>=1.1.0 \
+    trafilatura>=1.6.0 \
+    tiktoken>=0.5.0 \
+    aiofiles>=23.0.0
 
 # Copy NEXEN core library
 COPY nexen /app/nexen

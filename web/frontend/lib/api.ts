@@ -152,3 +152,180 @@ export const api = {
             `/knowledge/search?q=${encodeURIComponent(query)}${sessionId ? `&session_id=${sessionId}` : ''}`
         ),
 };
+
+// =============================================================================
+// Library API Types
+// =============================================================================
+
+export interface LibraryFolder {
+    id: string;
+    name: string;
+    parent_id: string | null;
+    description?: string;
+    color?: string;
+    document_count: number;
+    children: LibraryFolder[];
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface LibraryDocument {
+    id: string;
+    name: string;
+    file_type: string;
+    file_size: number;
+    folder_id: string | null;
+    source_url?: string;
+    parse_status: string;
+    embedding_status: string;
+    chunk_count: number;
+    tags: string[];
+    metadata: Record<string, unknown>;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface LibraryDocumentList {
+    documents: LibraryDocument[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface LibraryTag {
+    name: string;
+    count: number;
+}
+
+export interface DocumentStatus {
+    parse_status: string;
+    embedding_status: string;
+    parse_error?: string;
+    chunk_count: number;
+}
+
+// =============================================================================
+// Library API
+// =============================================================================
+
+function getAuthHeaders(): HeadersInit {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function fetchApiWithAuth<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+            ...options?.headers,
+        },
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || 'Request failed');
+    }
+
+    // Handle 204 No Content
+    if (response.status === 204) {
+        return undefined as T;
+    }
+
+    return response.json();
+}
+
+async function fetchApiFormData<T>(endpoint: string, formData: FormData): Promise<T> {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: {
+            ...getAuthHeaders(),
+        },
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || 'Request failed');
+    }
+
+    return response.json();
+}
+
+export const libraryApi = {
+    // Folders
+    getFolders: () => fetchApiWithAuth<LibraryFolder[]>('/library/folders'),
+
+    createFolder: (data: { name: string; parent_id?: string; description?: string; color?: string }) =>
+        fetchApiWithAuth<LibraryFolder>('/library/folders', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    updateFolder: (id: string, data: { name?: string; parent_id?: string; description?: string; color?: string }) =>
+        fetchApiWithAuth<LibraryFolder>(`/library/folders/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
+    deleteFolder: (id: string) =>
+        fetchApiWithAuth<void>(`/library/folders/${id}`, {
+            method: 'DELETE',
+        }),
+
+    // Documents
+    getDocuments: (params?: { folder_id?: string; page?: number; page_size?: number; search?: string; tags?: string }) => {
+        const searchParams = new URLSearchParams();
+        if (params?.folder_id) searchParams.set('folder_id', params.folder_id);
+        if (params?.page) searchParams.set('page', params.page.toString());
+        if (params?.page_size) searchParams.set('page_size', params.page_size.toString());
+        if (params?.search) searchParams.set('search', params.search);
+        if (params?.tags) searchParams.set('tags', params.tags);
+        const query = searchParams.toString();
+        return fetchApiWithAuth<LibraryDocumentList>(`/library/documents${query ? `?${query}` : ''}`);
+    },
+
+    uploadDocument: (file: File, folderId?: string, tags?: string[]) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (folderId) formData.append('folder_id', folderId);
+        if (tags && tags.length > 0) formData.append('tags', tags.join(','));
+        return fetchApiFormData<LibraryDocument>('/library/documents/upload', formData);
+    },
+
+    importUrl: (url: string, folderId?: string, tags?: string[]) =>
+        fetchApiWithAuth<LibraryDocument>('/library/documents/import-url', {
+            method: 'POST',
+            body: JSON.stringify({ url, folder_id: folderId, tags }),
+        }),
+
+    getDocument: (id: string) => fetchApiWithAuth<LibraryDocument>(`/library/documents/${id}`),
+
+    updateDocument: (id: string, data: { name?: string; tags?: string[] }) =>
+        fetchApiWithAuth<LibraryDocument>(`/library/documents/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
+    deleteDocument: (id: string) =>
+        fetchApiWithAuth<void>(`/library/documents/${id}`, {
+            method: 'DELETE',
+        }),
+
+    moveDocument: (id: string, folderId: string | null) =>
+        fetchApiWithAuth<LibraryDocument>(`/library/documents/${id}/move`, {
+            method: 'POST',
+            body: JSON.stringify({ folder_id: folderId }),
+        }),
+
+    getDocumentStatus: (id: string) => fetchApiWithAuth<DocumentStatus>(`/library/documents/${id}/status`),
+
+    getDocumentContent: (id: string) =>
+        fetchApiWithAuth<{ id: string; name: string; content: string; parse_status: string }>(
+            `/library/documents/${id}/content`
+        ),
+
+    // Tags
+    getTags: () => fetchApiWithAuth<{ tags: LibraryTag[] }>('/library/tags'),
+};
