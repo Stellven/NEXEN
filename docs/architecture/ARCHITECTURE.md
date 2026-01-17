@@ -1,6 +1,6 @@
 # NEXEN 系统架构设计文档
 
-> 版本: 1.2.0
+> 版本: 1.3.0
 > 更新日期: 2025-01-16
 > 作者: Claude AI Assistant
 
@@ -18,7 +18,7 @@ NEXEN 是一个多智能体 AI 研究助手平台，参考 AI Teams Engine 设�
 | AI Explore | `/explore` | ✅ 已完成 | 语义搜索、文档预览、标签分类 |
 | My Library | `/library` | ✅ 已完成 | 文档上传、URL导入、文件夹管理 |
 | AI Image | `/ai-image` | 📝 UI占位 | DALL-E 图像生成、Vision 分析 |
-| AI Writing | `/ai-writing` | 📝 UI占位 | 富文本编辑器、AI辅助写作 |
+| AI Writing | `/ai-writing` | ✅ 已完成 | 富文本编辑器、AI辅助写作 |
 | AI Research | `/ai-research` | 📝 UI占位 | 多智能体研究系统（重构） |
 | AI Reports | `/ai-office` | 📝 UI占位 | 报告生成、图表、导出 |
 | AI Decision | `/ai-simulation` | 📝 UI占位 | 决策矩阵、场景模拟 |
@@ -219,10 +219,9 @@ User
 - [x] Phase 2: AI Ask API 和前端
 - [x] Phase 2: AI Explore (语义搜索)
 - [x] Phase 3: My Library (文档管理)
+- [x] Phase 4: AI Writing (富文本编辑, TipTap, AI辅助写作)
 
 ### 5.2 待完成
-
-- [ ] Phase 4: AI Writing (富文本编辑)
 - [ ] Phase 5: AI Research (重构)
 - [ ] Phase 6: AI Image (DALL-E)
 - [ ] Phase 7: AI Reports
@@ -239,6 +238,7 @@ User
 | 1.0.0 | 2025-01-16 | 初始架构文档，完成 Phase 1, AI Ask |
 | 1.1.0 | 2025-01-16 | 完成 AI Explore 模块 |
 | 1.2.0 | 2025-01-16 | 完成 My Library 模块（文档上传、URL导入、文件夹管理、向量化） |
+| 1.3.0 | 2025-01-16 | 完成 AI Writing 模块（TipTap编辑器、AI续写/改写/翻译/润色） |
 
 ---
 
