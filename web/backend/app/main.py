@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.api import research, sessions, agents, knowledge, skills, chat, explore, library
+from app.api import research, sessions, agents, knowledge, skills, chat, explore, library, writing
 from app.api import auth as auth_api
 from app.api import user_settings as settings_api
 from app.websocket import router as ws_router
@@ -75,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix=f"{settings.api_prefix}/chat", tags=["chat"])
     app.include_router(explore.router, prefix=f"{settings.api_prefix}/explore", tags=["explore"])
     app.include_router(library.router, prefix=f"{settings.api_prefix}/library", tags=["library"])
+    app.include_router(writing.router, prefix=f"{settings.api_prefix}/writing", tags=["writing"])
 
     # WebSocket
     app.include_router(ws_router)

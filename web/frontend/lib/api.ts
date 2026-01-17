@@ -329,3 +329,150 @@ export const libraryApi = {
     // Tags
     getTags: () => fetchApiWithAuth<{ tags: LibraryTag[] }>('/library/tags'),
 };
+
+// =============================================================================
+// Writing API Types
+// =============================================================================
+
+export interface WritingProject {
+    id: string;
+    title: string;
+    template_type: string | null;
+    content: string;
+    content_html: string;
+    word_count: number;
+    character_count: number;
+    status: 'draft' | 'completed' | 'archived';
+    created_at: string;
+    updated_at: string;
+}
+
+export interface WritingProjectList {
+    projects: WritingProject[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface WritingTemplate {
+    id: string;
+    name: string;
+    name_cn: string;
+    description: string;
+    initial_content: string;
+    icon: string;
+}
+
+export interface AIWritingRequest {
+    action: 'continue' | 'rewrite' | 'translate' | 'polish';
+    selected_text?: string;
+    cursor_position?: number;
+    context_before?: string;
+    context_after?: string;
+    target_language?: string;
+    model?: string;
+}
+
+// =============================================================================
+// Writing API
+// =============================================================================
+
+export const writingApi = {
+    // Templates
+    getTemplates: () => fetchApiWithAuth<{ templates: WritingTemplate[] }>('/writing/templates'),
+
+    // Projects
+    getProjects: (params?: { page?: number; page_size?: number; status?: string }) => {
+        const searchParams = new URLSearchParams();
+        if (params?.page) searchParams.set('page', params.page.toString());
+        if (params?.page_size) searchParams.set('page_size', params.page_size.toString());
+        if (params?.status) searchParams.set('status', params.status);
+        const query = searchParams.toString();
+        return fetchApiWithAuth<WritingProjectList>(`/writing/projects${query ? `?${query}` : ''}`);
+    },
+
+    createProject: (data: { title: string; template_type?: string; content?: string; content_html?: string }) =>
+        fetchApiWithAuth<WritingProject>('/writing/projects', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    getProject: (id: string) => fetchApiWithAuth<WritingProject>(`/writing/projects/${id}`),
+
+    updateProject: (id: string, data: { title?: string; content?: string; content_html?: string; status?: string }) =>
+        fetchApiWithAuth<WritingProject>(`/writing/projects/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
+    deleteProject: (id: string) =>
+        fetchApiWithAuth<void>(`/writing/projects/${id}`, {
+            method: 'DELETE',
+        }),
+
+    // AI Writing (streaming)
+    aiWriting: async (
+        projectId: string,
+        request: AIWritingRequest,
+        onChunk: (chunk: string) => void,
+        onError?: (error: string) => void
+    ): Promise<void> => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const response = await fetch(`${API_BASE}/writing/projects/${projectId}/ai`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify(request),
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: 'AI request failed' }));
+            throw new Error(error.detail || 'AI request failed');
+        }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        while (reader) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.content) {
+                            onChunk(data.content);
+                        }
+                        if (data.error) {
+                            onError?.(data.error);
+                            throw new Error(data.error);
+                        }
+                        if (data.done) {
+                            return;
+                        }
+                    } catch (e) {
+                        // Skip invalid JSON lines
+                        if (e instanceof SyntaxError) continue;
+                        throw e;
+                    }
+                }
+            }
+        }
+    },
+
+    // Save to Library
+    saveToLibrary: (projectId: string, folderId?: string, tags?: string[]) =>
+        fetchApiWithAuth<{ id: string; title: string; message: string }>(
+            `/writing/projects/${projectId}/save-to-library`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ folder_id: folderId, tags }),
+            }
+        ),
+};
