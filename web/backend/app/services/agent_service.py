@@ -57,6 +57,7 @@ class AgentService:
         """Get an agent instance by ID."""
         # Import agent classes dynamically
         agent_map = {
+            "meta_coordinator": "nexen.agents.generic.MetaCoordinatorAgent",
             "explorer": "nexen.agents.information.explorer.ExplorerAgent",
             "critic": "nexen.agents.reasoning.critic.CriticAgent",
             "scribe": "nexen.agents.production.scribe.ScribeAgent",
@@ -71,14 +72,16 @@ class AgentService:
             "archivist": "nexen.agents.production.archivist.ArchivistAgent",
             "prompt_engineer": "nexen.agents.production.prompt_engineer.PromptEngineerAgent",
         }
-        
+
         if agent_id not in agent_map:
-            raise ValueError(f"Unknown agent: {agent_id}")
-        
+            # Use GenericAgent for unknown agents
+            from nexen.agents.generic import GenericAgent
+            return GenericAgent(agent_id=agent_id, session_id=session_id)
+
         module_path, class_name = agent_map[agent_id].rsplit(".", 1)
-        
+
         import importlib
         module = importlib.import_module(module_path)
         agent_class = getattr(module, class_name)
-        
-        return agent_class(session_id=session_id)
+
+        return agent_class(agent_id=agent_id, session_id=session_id)

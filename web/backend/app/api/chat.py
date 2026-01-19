@@ -52,6 +52,9 @@ class MessageResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str = Field(..., min_length=1)
     model: Optional[str] = "openai/gpt-4o"
+    features: Optional[List[str]] = []  # web_search, deep_research, etc.
+    knowledge_bases: Optional[List[str]] = []  # folder:id, doc:id
+    skills: Optional[List[str]] = []  # Anthropic skill names
 
 
 class ConversationListResponse(BaseModel):
@@ -86,7 +89,7 @@ async def list_conversations(
             ConversationResponse(
                 id=c.id,
                 title=c.title,
-                model=c.model,
+                model=c.model_id,
                 created_at=c.created_at,
                 updated_at=c.updated_at,
             )
@@ -115,7 +118,7 @@ async def create_conversation(
     return ConversationResponse(
         id=conversation.id,
         title=conversation.title,
-        model=conversation.model,
+        model=conversation.model_id,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
     )
@@ -150,7 +153,7 @@ async def get_conversation(
         conversation=ConversationResponse(
             id=conversation.id,
             title=conversation.title,
-            model=conversation.model,
+            model=conversation.model_id,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
         ),
@@ -220,7 +223,7 @@ async def update_conversation_title(
     return ConversationResponse(
         id=conversation.id,
         title=conversation.title,
-        model=conversation.model,
+        model=conversation.model_id,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
     )
@@ -256,8 +259,8 @@ async def send_message(
 
     # Update conversation
     conversation.updated_at = datetime.utcnow()
-    if conversation.model != request.model:
-        conversation.model = request.model
+    if conversation.model_id != request.model:
+        conversation.model_id = request.model
 
     # If first message, update title
     message_count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
@@ -268,10 +271,17 @@ async def send_message(
 
     # Generate AI response (streaming)
     async def generate_response():
+        prompt_tokens = 0
+        completion_tokens = 0
+
         try:
-            # Get user's API settings
-            from app.db.models import UserSettings
-            settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
+            # Get user's API keys from file storage
+            from app.services.api_key_storage import get_user_api_keys as get_file_api_keys
+            from app.services.usage_service import record_usage
+            from app.services.search_service import search_web, format_search_results_for_prompt, should_search, extract_search_query
+
+            api_keys = get_file_api_keys(current_user.id)
+            logger.info(f"User ID: {current_user.id}, API keys available: {list(api_keys.keys())}, has values: {[k for k,v in api_keys.items() if v]}")
 
             # Get all messages for context
             messages = (
@@ -284,20 +294,78 @@ async def send_message(
             # Build message history
             history = [{"role": m.role, "content": m.content} for m in messages]
 
+            # Build system prompt with skills context
+            system_prompt = "You are a helpful AI assistant."
+
+            # Add skill context if skills are selected
+            if request.skills:
+                try:
+                    from nexen.skills.anthropic_loader import get_skill_context
+                    skill_contexts = []
+                    for skill_name in request.skills:
+                        ctx = get_skill_context(skill_name)
+                        if ctx:
+                            skill_contexts.append(ctx)
+                    if skill_contexts:
+                        system_prompt += "\n\n# Available Skills\n\n"
+                        system_prompt += "\n\n---\n\n".join(skill_contexts)
+                        system_prompt += "\n\nUse the above skill instructions when relevant to the user's request."
+                except ImportError:
+                    logger.warning("Skills module not available")
+
+            # Web search integration
+            if should_search(request.content, request.features):
+                serper_key = api_keys.get("serper")
+                if serper_key:
+                    yield f"data: {json.dumps({'search_status': 'searching'})}\n\n"
+                    search_query = extract_search_query(request.content)
+                    search_results = await search_web(search_query, serper_key)
+                    if not search_results.get("error"):
+                        search_context = format_search_results_for_prompt(search_results)
+                        system_prompt += f"""
+
+{search_context}
+
+**重要指示**：你已获得最新的网络搜索结果。请务必：
+1. 直接引用并总结搜索结果中的信息来回答用户问题
+2. 明确标注信息来源（如"根据搜索结果..."）
+3. 如果搜索结果包含数据、数字或事实，请如实报告
+4. 即使是敏感话题（如股市、新闻等），也应报告搜索到的客观信息
+5. 仅在搜索结果确实不包含相关信息时，才说明需要依赖其他知识"""
+                        yield f"data: {json.dumps({'search_status': 'done', 'results_count': len(search_results.get('results', []))})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'search_status': 'error', 'error': search_results.get('error')})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'search_status': 'no_key'})}\n\n"
+
+            # Prepend system message
+            history = [{"role": "system", "content": system_prompt}] + history
+
             # Get API key based on model
             model = request.model or "openai/gpt-4o"
             api_key = None
+            provider = None
 
             if model.startswith("openai/"):
-                api_key = settings.openai_api_key if settings else None
+                api_key = api_keys.get("openai")
+                provider = "openai"
             elif model.startswith("anthropic/"):
-                api_key = settings.anthropic_api_key if settings else None
+                api_key = api_keys.get("anthropic")
+                provider = "anthropic"
             elif model.startswith("google/"):
-                api_key = settings.google_api_key if settings else None
+                api_key = api_keys.get("google")
+                provider = "google"
+            elif model.startswith("deepseek/"):
+                api_key = api_keys.get("deepseek")
+                provider = "deepseek"
+            elif model.startswith("qwen/"):
+                api_key = api_keys.get("dashscope")
+                provider = "dashscope"
+
+            logger.info(f"Model: {model}, Provider: {provider}, API key exists: {bool(api_key)}")
 
             if not api_key:
-                # Return error as stream
-                error_msg = "请先在设置中配置相应的 API 密钥"
+                error_msg = f"请先在设置中配置相应的 API 密钥 (provider: {provider})"
                 yield f"data: {json.dumps({'error': error_msg})}\n\n"
                 return
 
@@ -313,13 +381,17 @@ async def send_message(
                     model=model_name,
                     messages=history,
                     stream=True,
+                    stream_options={"include_usage": True},
                 )
 
                 for chunk in stream:
-                    if chunk.choices[0].delta.content:
+                    if chunk.choices and chunk.choices[0].delta.content:
                         content = chunk.choices[0].delta.content
                         full_response += content
                         yield f"data: {json.dumps({'content': content})}\n\n"
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        prompt_tokens = chunk.usage.prompt_tokens
+                        completion_tokens = chunk.usage.completion_tokens
 
             elif model.startswith("anthropic/"):
                 import anthropic
@@ -344,6 +416,11 @@ async def send_message(
                     for text in stream.text_stream:
                         full_response += text
                         yield f"data: {json.dumps({'content': text})}\n\n"
+                    # Get usage from final message
+                    final_message = stream.get_final_message()
+                    if final_message and final_message.usage:
+                        prompt_tokens = final_message.usage.input_tokens
+                        completion_tokens = final_message.usage.output_tokens
 
             elif model.startswith("google/"):
                 import google.generativeai as genai
@@ -365,19 +442,88 @@ async def send_message(
                     if chunk.text:
                         full_response += chunk.text
                         yield f"data: {json.dumps({'content': chunk.text})}\n\n"
+                # Estimate tokens for Google (no direct API)
+                prompt_tokens = sum(len(m["content"]) // 4 for m in history)
+                completion_tokens = len(full_response) // 4
 
-            # Save assistant message
+            elif model.startswith("deepseek/"):
+                # DeepSeek uses OpenAI-compatible API
+                import openai
+                client = openai.OpenAI(
+                    api_key=api_key,
+                    base_url="https://api.deepseek.com/v1"
+                )
+                model_name = model.replace("deepseek/", "")
+
+                stream = client.chat.completions.create(
+                    model=model_name,
+                    messages=history,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        full_response += content
+                        yield f"data: {json.dumps({'content': content})}\n\n"
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        prompt_tokens = chunk.usage.prompt_tokens
+                        completion_tokens = chunk.usage.completion_tokens
+
+            elif model.startswith("qwen/"):
+                # Qwen/DashScope
+                import dashscope
+                from dashscope import Generation
+                dashscope.api_key = api_key
+                model_name = model.replace("qwen/", "")
+
+                responses = Generation.call(
+                    model=model_name,
+                    messages=history,
+                    result_format='message',
+                    stream=True,
+                    incremental_output=True,
+                )
+
+                for response in responses:
+                    if response.status_code == 200:
+                        if response.output and response.output.choices:
+                            choice = response.output.choices[0]
+                            if choice.message and choice.message.content:
+                                content = choice.message.content
+                                full_response += content
+                                yield f"data: {json.dumps({'content': content})}\n\n"
+                        # Get usage from last response
+                        if response.usage:
+                            prompt_tokens = response.usage.input_tokens
+                            completion_tokens = response.usage.output_tokens
+                    else:
+                        error_msg = f"DashScope error: {response.code} - {response.message}"
+                        yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                        return
+
+            # Save assistant message with token usage
             assistant_message = Message(
                 id=str(uuid4()),
                 conversation_id=conversation_id,
                 role="assistant",
                 content=full_response,
                 model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
             )
             db.add(assistant_message)
             db.commit()
 
-            yield f"data: {json.dumps({'done': True, 'message_id': assistant_message.id})}\n\n"
+            # Record usage statistics
+            if prompt_tokens > 0 or completion_tokens > 0:
+                try:
+                    record_usage(db, current_user.id, model, prompt_tokens, completion_tokens)
+                except Exception as e:
+                    logger.error(f"Failed to record usage: {e}")
+
+            yield f"data: {json.dumps({'done': True, 'message_id': assistant_message.id, 'usage': {'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens}})}\n\n"
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")

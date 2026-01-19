@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     Brain,
     Search,
@@ -24,6 +24,7 @@ import {
     Edit3,
     Save,
     RotateCcw,
+    Activity,
 } from 'lucide-react';
 import {
     agentApi,
@@ -32,6 +33,14 @@ import {
     DefaultAgentTemplate,
     PipelineConfig,
 } from '@/lib/api';
+import { MODEL_OPTIONS } from '@/lib/modelConfig';
+import { useResearchTeamStore } from '@/lib/researchTeamStore';
+import HierarchicalAgentGraph from '@/components/HierarchicalAgentGraph';
+import AgentConfigModal from '@/components/AgentConfigModal';
+import { wsClient, AgentStatusMessage, DataFlowMessage } from '@/lib/websocket';
+
+// Workspace directory configuration
+const DEFAULT_WORKSPACE_DIR = '/research_workspace';
 
 // =============================================================================
 // Types & Constants
@@ -100,18 +109,6 @@ const AGENT_ICONS: Record<string, string> = {
     prompt_engineer: '💡',
 };
 
-const MODEL_OPTIONS = [
-    { value: 'openai/gpt-4o', label: 'GPT-4o', provider: 'OpenAI' },
-    { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', provider: 'OpenAI' },
-    { value: 'openai/o1', label: 'o1', provider: 'OpenAI' },
-    { value: 'openai/o3-mini', label: 'o3-mini', provider: 'OpenAI' },
-    { value: 'anthropic/claude-opus-4', label: 'Claude Opus 4', provider: 'Anthropic' },
-    { value: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4', provider: 'Anthropic' },
-    { value: 'google/gemini-2.0-pro', label: 'Gemini 2.0 Pro', provider: 'Google' },
-    { value: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'Google' },
-    { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1', provider: 'DeepSeek' },
-];
-
 const TRAIT_OPTIONS = ['very_low', 'low', 'medium', 'high', 'very_high'];
 
 // =============================================================================
@@ -119,11 +116,18 @@ const TRAIT_OPTIONS = ['very_low', 'low', 'medium', 'high', 'very_high'];
 // =============================================================================
 
 export default function ResearchTeamPage() {
+    // Persistent State (from zustand store)
+    const {
+        selectedCluster,
+        setSelectedCluster,
+        selectedProfileId,
+        setSelectedProfileId,
+    } = useResearchTeamStore();
+
     // State
     const [profiles, setProfiles] = useState<AgentProfile[]>([]);
     const [defaultAgents, setDefaultAgents] = useState<DefaultAgentTemplate[]>([]);
     const [selectedProfile, setSelectedProfile] = useState<AgentProfile | null>(null);
-    const [selectedCluster, setSelectedCluster] = useState<AgentCluster | 'all' | 'custom'>('all');
 
     // UI State
     const [isLoading, setIsLoading] = useState(true);
@@ -138,7 +142,91 @@ export default function ResearchTeamPage() {
 
     // Modal State
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [configModalAgentId, setConfigModalAgentId] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Agent runtime states for visualization (will be populated via WebSocket)
+    const [agentStates, setAgentStates] = useState<Map<string, {
+        agentId: string;
+        status: 'idle' | 'initializing' | 'running' | 'waiting' | 'completed' | 'failed';
+        currentTask?: string;
+        progress?: number;
+    }>>(new Map());
+
+    // Data flow events for animation
+    const [dataFlows, setDataFlows] = useState<Array<{
+        id: string;
+        fromAgent: string;
+        toAgent: string;
+        progress: number;
+    }>>([]);
+
+    // Workspace configuration
+    const [workspaceDir, setWorkspaceDir] = useState(DEFAULT_WORKSPACE_DIR);
+
+    // Handle open workspace directory
+    const handleOpenWorkspace = useCallback(() => {
+        // In a web app, we can't directly open file system
+        // But we can show the path or copy it
+        navigator.clipboard.writeText(workspaceDir);
+        alert(`工作区目录已复制到剪贴板:\n${workspaceDir}\n\n请在终端或文件管理器中打开此目录查看 Agent 输出文件。`);
+    }, [workspaceDir]);
+
+    // Restore selected profile from persisted ID
+    useEffect(() => {
+        if (selectedProfileId && profiles.length > 0) {
+            const profile = profiles.find(p => p.id === selectedProfileId);
+            if (profile) {
+                setSelectedProfile(profile);
+            }
+        }
+    }, [selectedProfileId, profiles]);
+
+    // WebSocket connection for real-time agent status updates
+    useEffect(() => {
+        // Connect to WebSocket
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const wsUrl = apiUrl.replace('http', 'ws') + '/ws';
+        wsClient.connect(wsUrl);
+
+        // Subscribe to agent status updates
+        const unsubAgentStatus = wsClient.onAgentStatus((message: AgentStatusMessage) => {
+            setAgentStates(prev => {
+                const newMap = new Map(prev);
+                newMap.set(message.agent_id, {
+                    agentId: message.agent_id,
+                    status: message.status,
+                    currentTask: message.task,
+                    progress: message.progress,
+                });
+                return newMap;
+            });
+        });
+
+        // Subscribe to data flow events
+        const unsubDataFlow = wsClient.onDataFlow((message: DataFlowMessage) => {
+            const flowId = `${message.from_agent}-${message.to_agent}-${Date.now()}`;
+            setDataFlows(prev => [
+                ...prev,
+                {
+                    id: flowId,
+                    fromAgent: message.from_agent,
+                    toAgent: message.to_agent,
+                    progress: 0,
+                },
+            ]);
+
+            // Auto-remove data flow after animation
+            setTimeout(() => {
+                setDataFlows(prev => prev.filter(f => f.id !== flowId));
+            }, 2000);
+        });
+
+        return () => {
+            unsubAgentStatus();
+            unsubDataFlow();
+        };
+    }, []);
 
     // =============================================================================
     // Data Fetching
@@ -159,8 +247,9 @@ export default function ResearchTeamPage() {
             setProfiles(profilesRes.profiles);
             setDefaultAgents(defaultsRes.agents);
 
-            // Auto-initialize default agents if none exist
-            if (profilesRes.profiles.length === 0 && defaultsRes.agents.length > 0) {
+            // Auto-initialize default agents if no default agents exist
+            const hasDefaultAgents = profilesRes.profiles.some(p => !p.is_custom);
+            if (!hasDefaultAgents && defaultsRes.agents.length > 0) {
                 try {
                     await agentApi.initDefaults();
                     const newProfilesRes = await agentApi.getProfiles();
@@ -182,10 +271,24 @@ export default function ResearchTeamPage() {
 
     const handleSelectProfile = (profile: AgentProfile) => {
         setSelectedProfile(profile);
+        setSelectedProfileId(profile.id); // Persist to store
         setEditForm({});
         setIsEditing(false);
         setTestResult(null);
     };
+
+    // Handle click on agent in hierarchical graph - opens config modal
+    const handleAgentGraphClick = useCallback((agentId: string) => {
+        const profile = profiles.find(p => p.agent_type === agentId);
+        if (profile) {
+            setConfigModalAgentId(agentId);
+        }
+    }, [profiles]);
+
+    // Get profile for config modal
+    const configModalProfile = configModalAgentId
+        ? profiles.find(p => p.agent_type === configModalAgentId)
+        : null;
 
     const handleStartEdit = () => {
         if (!selectedProfile) return;
@@ -255,6 +358,7 @@ export default function ResearchTeamPage() {
             setProfiles(profiles.filter((p) => p.id !== profile.id));
             if (selectedProfile?.id === profile.id) {
                 setSelectedProfile(null);
+                setSelectedProfileId(null); // Clear from store
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete agent');
@@ -348,9 +452,9 @@ export default function ResearchTeamPage() {
     }
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="min-h-full overflow-y-auto">
             {/* Header */}
-            <div className="border-b border-gray-200 bg-white px-6 py-4">
+            <div className="sticky top-0 z-20 border-b border-gray-200 bg-white px-6 py-4">
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-xl font-bold text-gray-900">Research Team</h1>
@@ -409,6 +513,18 @@ export default function ResearchTeamPage() {
                 </div>
             </div>
 
+            {/* Hierarchical Agent Graph */}
+            <div className="bg-white px-6 py-4">
+                <HierarchicalAgentGraph
+                    onAgentClick={handleAgentGraphClick}
+                    selectedAgentId={configModalAgentId}
+                    enabledAgents={new Set(profiles.filter(p => p.is_enabled).map(p => p.agent_type))}
+                    agentStates={agentStates}
+                    workspaceDir={workspaceDir}
+                    onOpenWorkspace={handleOpenWorkspace}
+                />
+            </div>
+
             {/* Error Alert */}
             {error && (
                 <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -421,9 +537,9 @@ export default function ResearchTeamPage() {
             )}
 
             {/* Content */}
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-col lg:flex-row">
                 {/* Agent List */}
-                <div className="w-80 flex-shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 p-4">
+                <div className="w-full lg:w-80 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-200 bg-gray-50 p-4">
                     {selectedCluster === 'all' ? (
                         // Grouped by cluster
                         (Object.keys(CLUSTER_CONFIG) as AgentCluster[]).map((cluster) => {
@@ -476,7 +592,7 @@ export default function ResearchTeamPage() {
                 </div>
 
                 {/* Detail Panel */}
-                <div className="flex-1 overflow-y-auto bg-white">
+                <div className="flex-1 bg-white min-h-[400px]">
                     {selectedProfile ? (
                         <div className="p-6">
                             {/* Profile Header */}
@@ -852,6 +968,59 @@ export default function ResearchTeamPage() {
                         } catch (err) {
                             throw err;
                         }
+                    }}
+                />
+            )}
+
+            {/* Agent Config Modal */}
+            {configModalProfile && (
+                <AgentConfigModal
+                    profile={configModalProfile}
+                    defaultAgent={defaultAgents.find(a => a.agent_type === configModalProfile.agent_type)}
+                    onClose={() => setConfigModalAgentId(null)}
+                    onSave={async (updates) => {
+                        const updated = await agentApi.updateProfile(configModalProfile.id, updates);
+                        setProfiles(profiles.map((p) => (p.id === updated.id ? updated : p)));
+                        if (selectedProfile?.id === updated.id) {
+                            setSelectedProfile(updated);
+                        }
+                    }}
+                    onTest={async (task) => {
+                        const result = await agentApi.testAgent(configModalProfile.id, task);
+                        return result.result;
+                    }}
+                    onClone={async () => {
+                        const cloned = await agentApi.cloneProfile(configModalProfile.id);
+                        setProfiles([cloned, ...profiles]);
+                        setConfigModalAgentId(cloned.agent_type);
+                    }}
+                    onDelete={async () => {
+                        if (!configModalProfile.is_custom) {
+                            throw new Error('Cannot delete default agents');
+                        }
+                        await agentApi.deleteProfile(configModalProfile.id);
+                        setProfiles(profiles.filter((p) => p.id !== configModalProfile.id));
+                        setConfigModalAgentId(null);
+                    }}
+                    onReset={async () => {
+                        const defaultAgent = defaultAgents.find((a) => a.agent_type === configModalProfile.agent_type);
+                        if (!defaultAgent) throw new Error('No default configuration found');
+                        const updated = await agentApi.updateProfile(configModalProfile.id, {
+                            role_model: defaultAgent.role_model,
+                            fallback_model: defaultAgent.fallback_model,
+                            temperature: defaultAgent.temperature,
+                            max_tokens: defaultAgent.max_tokens,
+                            persona: defaultAgent.persona,
+                            traits: defaultAgent.traits,
+                            responsibilities: defaultAgent.responsibilities,
+                        });
+                        setProfiles(profiles.map((p) => (p.id === updated.id ? updated : p)));
+                    }}
+                    onToggleEnabled={async () => {
+                        const updated = await agentApi.updateProfile(configModalProfile.id, {
+                            is_enabled: !configModalProfile.is_enabled,
+                        });
+                        setProfiles(profiles.map((p) => (p.id === updated.id ? updated : p)));
                     }}
                 />
             )}

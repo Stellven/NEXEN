@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .env
+.env.local
 node_modules/
 .next/
 *.egg-info/
@@ -9,3 +10,9 @@ build/
 .DS_Store
 research_workspace/
 postgres_data/
+
+# API Keys - NEVER commit these files
+api_keys.json
+**/api_keys.json
+web/backend/api_keys.json
+web/backend/data/api_keys.json

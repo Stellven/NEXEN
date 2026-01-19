@@ -16,6 +16,7 @@ import {
     Check,
     ExternalLink,
 } from 'lucide-react';
+import { MODEL_PROVIDERS, DEFAULT_MODEL } from '@/lib/modelConfig';
 
 interface SettingSection {
     id: string;
@@ -28,6 +29,9 @@ interface ApiSettings {
     has_openai: boolean;
     has_anthropic: boolean;
     has_google: boolean;
+    has_deepseek: boolean;
+    has_dashscope: boolean;
+    has_serper: boolean;
     default_model: string;
 }
 
@@ -46,7 +50,10 @@ export default function SettingsPage() {
     const [openaiKey, setOpenaiKey] = useState('');
     const [anthropicKey, setAnthropicKey] = useState('');
     const [googleKey, setGoogleKey] = useState('');
-    const [defaultModel, setDefaultModel] = useState('openai/gpt-4o');
+    const [deepseekKey, setDeepseekKey] = useState('');
+    const [dashscopeKey, setDashscopeKey] = useState('');
+    const [serperKey, setSerperKey] = useState('');
+    const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -58,22 +65,41 @@ export default function SettingsPage() {
 
     const fetchApiSettings = async () => {
         const token = localStorage.getItem('token');
+
+        if (!token) {
+            setMessage({ type: 'error', text: '请先登录后再配置 API 密钥' });
+            return;
+        }
+
         try {
             const response = await fetch('/api/settings', {
                 headers: { Authorization: `Bearer ${token}` },
             });
+
             if (response.ok) {
                 const data = await response.json();
                 setApiSettings(data);
-                setDefaultModel(data.default_model || 'openai/gpt-4o');
+                setDefaultModel(data.default_model || DEFAULT_MODEL);
+            } else if (response.status === 401) {
+                setMessage({ type: 'error', text: '登录已过期，请重新登录' });
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                setMessage({ type: 'error', text: errorData.detail || '获取设置失败' });
             }
         } catch (error) {
             console.error('Failed to fetch settings:', error);
+            setMessage({ type: 'error', text: '无法连接到服务器，请检查后端是否启动' });
         }
     };
 
     const handleSaveApiSettings = async () => {
         const token = localStorage.getItem('token');
+
+        if (!token) {
+            setMessage({ type: 'error', text: '请先登录' });
+            return;
+        }
+
         setSaving(true);
         setMessage(null);
 
@@ -82,6 +108,9 @@ export default function SettingsPage() {
             if (openaiKey) updates.openai_api_key = openaiKey;
             if (anthropicKey) updates.anthropic_api_key = anthropicKey;
             if (googleKey) updates.google_api_key = googleKey;
+            if (deepseekKey) updates.deepseek_api_key = deepseekKey;
+            if (dashscopeKey) updates.dashscope_api_key = dashscopeKey;
+            if (serperKey) updates.serper_api_key = serperKey;
 
             const response = await fetch('/api/settings', {
                 method: 'PUT',
@@ -92,16 +121,24 @@ export default function SettingsPage() {
                 body: JSON.stringify(updates),
             });
 
-            if (!response.ok) throw new Error('保存失败');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const detail = errorData.detail || `请求失败 (${response.status})`;
+                throw new Error(detail);
+            }
 
             const data = await response.json();
             setApiSettings(data);
             setOpenaiKey('');
             setAnthropicKey('');
             setGoogleKey('');
+            setDeepseekKey('');
+            setDashscopeKey('');
+            setSerperKey('');
             setMessage({ type: 'success', text: '设置已保存' });
         } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : '保存失败';
+            console.error('Save settings error:', error);
+            const errorMessage = error instanceof Error ? error.message : '保存失败，请检查网络连接';
             setMessage({ type: 'error', text: errorMessage });
         } finally {
             setSaving(false);
@@ -407,6 +444,98 @@ export default function SettingsPage() {
                                         />
                                     </div>
 
+                                    {/* DeepSeek */}
+                                    <div>
+                                        <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                                            DeepSeek API Key
+                                            {apiSettings?.has_deepseek && (
+                                                <span className="flex items-center gap-1 text-xs text-green-600">
+                                                    <Check className="h-3 w-3" />
+                                                    已配置
+                                                </span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={deepseekKey}
+                                            onChange={(e) => setDeepseekKey(e.target.value)}
+                                            placeholder={apiSettings?.has_deepseek ? '已配置 (输入新值覆盖)' : 'sk-...'}
+                                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                        />
+                                        <a
+                                            href="https://platform.deepseek.com/api-keys"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="mt-1 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+                                        >
+                                            获取密钥
+                                            <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    </div>
+
+                                    {/* DashScope (Qwen) */}
+                                    <div>
+                                        <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                                            千问 (DashScope) API Key
+                                            {apiSettings?.has_dashscope && (
+                                                <span className="flex items-center gap-1 text-xs text-green-600">
+                                                    <Check className="h-3 w-3" />
+                                                    已配置
+                                                </span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={dashscopeKey}
+                                            onChange={(e) => setDashscopeKey(e.target.value)}
+                                            placeholder={apiSettings?.has_dashscope ? '已配置 (输入新值覆盖)' : 'sk-...'}
+                                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                        />
+                                        <a
+                                            href="https://dashscope.console.aliyun.com/apiKey"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="mt-1 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+                                        >
+                                            获取密钥 (阿里云 DashScope)
+                                            <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    </div>
+
+                                    <hr className="my-2 border-gray-200" />
+
+                                    {/* Serper (Web Search) */}
+                                    <div>
+                                        <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                                            Serper API Key (联网搜索)
+                                            {apiSettings?.has_serper && (
+                                                <span className="flex items-center gap-1 text-xs text-green-600">
+                                                    <Check className="h-3 w-3" />
+                                                    已配置
+                                                </span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={serperKey}
+                                            onChange={(e) => setSerperKey(e.target.value)}
+                                            placeholder={apiSettings?.has_serper ? '已配置 (输入新值覆盖)' : '输入 Serper API Key'}
+                                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            配置后可在 AI Ask 中开启联网搜索功能
+                                        </p>
+                                        <a
+                                            href="https://serper.dev/api-key"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="mt-1 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600"
+                                        >
+                                            获取密钥 (免费额度)
+                                            <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    </div>
+
                                     {/* Default Model */}
                                     <div>
                                         <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -417,18 +546,15 @@ export default function SettingsPage() {
                                             onChange={(e) => setDefaultModel(e.target.value)}
                                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                                         >
-                                            <optgroup label="OpenAI">
-                                                <option value="openai/gpt-4o">GPT-4o</option>
-                                                <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-                                            </optgroup>
-                                            <optgroup label="Anthropic">
-                                                <option value="anthropic/claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                                                <option value="anthropic/claude-3-opus-20240229">Claude 3 Opus</option>
-                                            </optgroup>
-                                            <optgroup label="Google">
-                                                <option value="google/gemini-2.0-pro">Gemini 2 Pro</option>
-                                                <option value="google/gemini-2.0-flash">Gemini 2 Flash</option>
-                                            </optgroup>
+                                            {MODEL_PROVIDERS.map((provider) => (
+                                                <optgroup key={provider.id} label={provider.name}>
+                                                    {provider.models.map((model) => (
+                                                        <option key={model.id} value={model.id}>
+                                                            {model.name}{model.isNew ? ' (新)' : ''}{model.isPro ? ' (Pro)' : ''}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
                                         </select>
                                     </div>
                                 </div>

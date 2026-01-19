@@ -2,9 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (including WeasyPrint requirements)
 RUN apt-get update && apt-get install -y \
     gcc \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -22,12 +28,18 @@ RUN pip install --no-cache-dir \
     pyyaml>=6.0 \
     email-validator>=2.0.0 \
     openai>=1.0.0 \
+    anthropic>=0.40.0 \
+    google-generativeai>=0.8.0 \
     qdrant-client>=1.12.0 \
     PyMuPDF>=1.23.0 \
     python-docx>=1.1.0 \
     trafilatura>=1.6.0 \
     tiktoken>=0.5.0 \
-    aiofiles>=23.0.0
+    aiofiles>=23.0.0 \
+    weasyprint>=60.1 \
+    markdown>=3.5.0 \
+    dashscope>=1.14.0 \
+    aiohttp>=3.9.0
 
 # Copy NEXEN core library
 COPY nexen /app/nexen

@@ -21,8 +21,8 @@ from app.auth.deps import get_current_active_user
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Upload directory
-UPLOAD_DIR = "/app/uploads"
+# Upload directory - use environment variable or default to local path
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Supported file types

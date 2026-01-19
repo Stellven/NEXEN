@@ -16,6 +16,7 @@ import {
     Package,
     Settings,
     ChevronLeft,
+    GitBranch,
 } from 'lucide-react';
 
 // Navigation items configuration
@@ -44,6 +45,13 @@ const navigationItems = [
                 labelCn: '我的文库',
                 href: '/library',
                 icon: BookOpen,
+            },
+            {
+                id: 'workflows',
+                label: 'Agent Workflows',
+                labelCn: 'Agent 工作流',
+                href: '/library/workflows',
+                icon: GitBranch,
             },
         ],
     },

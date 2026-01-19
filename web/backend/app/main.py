@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.api import research, sessions, agents, knowledge, skills, chat, explore, library, writing, reports, image, teams, store, decisions, agent_profiles
+from app.api import research, sessions, agents, knowledge, skills, chat, explore, library, writing, reports, image, teams, store, decisions, agent_profiles, usage, workflows
 from app.api import auth as auth_api
 from app.api import user_settings as settings_api
 from app.websocket import router as ws_router
@@ -67,6 +67,9 @@ def create_app() -> FastAPI:
     app.include_router(settings_api.router, prefix=f"{settings.api_prefix}/settings", tags=["settings"])
 
     # API Routes
+    # Note: agent_profiles must be registered BEFORE agents to avoid route conflicts
+    # (agents has /{agent_id} which would match "profiles" otherwise)
+    app.include_router(agent_profiles.router, prefix=f"{settings.api_prefix}/agents", tags=["agent-profiles"])
     app.include_router(research.router, prefix=f"{settings.api_prefix}/research", tags=["research"])
     app.include_router(sessions.router, prefix=f"{settings.api_prefix}/sessions", tags=["sessions"])
     app.include_router(agents.router, prefix=f"{settings.api_prefix}/agents", tags=["agents"])
@@ -81,7 +84,8 @@ def create_app() -> FastAPI:
     app.include_router(teams.router, prefix=f"{settings.api_prefix}/teams", tags=["teams"])
     app.include_router(store.router, prefix=f"{settings.api_prefix}/store", tags=["store"])
     app.include_router(decisions.router, prefix=f"{settings.api_prefix}/decisions", tags=["decisions"])
-    app.include_router(agent_profiles.router, prefix=f"{settings.api_prefix}/agents", tags=["agents"])
+    app.include_router(usage.router, prefix=f"{settings.api_prefix}/usage", tags=["usage"])
+    app.include_router(workflows.router, prefix=f"{settings.api_prefix}", tags=["workflows"])
 
     # WebSocket
     app.include_router(ws_router)

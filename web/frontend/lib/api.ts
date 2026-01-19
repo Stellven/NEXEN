@@ -1781,3 +1781,282 @@ export const researchApi = {
             }
         ),
 };
+
+// =============================================================================
+// Agent Workflow API Types
+// =============================================================================
+
+export interface WorkflowNodeConfig {
+    // Model settings
+    roleModel?: string;
+    fallbackModel?: string;
+    temperature?: number;
+    maxTokens?: number;
+    // Persona
+    persona?: string;
+    // Traits
+    traits?: Record<string, string>;
+    // Responsibilities
+    responsibilities?: string[];
+    // Data sources
+    dataSources?: string[];
+    // Custom prompt override
+    customPrompt?: string;
+}
+
+export interface WorkflowNode {
+    id: string;
+    agentType: string;
+    agentProfileId?: string;
+    position: { x: number; y: number };
+    label?: string;
+    labelCn?: string;
+    cluster?: string;
+    config?: WorkflowNodeConfig;
+}
+
+export interface WorkflowEdgeConfig {
+    dataFormat?: 'markdown' | 'json' | 'text' | 'auto';
+    transform?: {
+        mode: 'pass' | 'summarize' | 'extract' | 'filter';
+        maxTokens?: number;
+        extractFields?: string[];
+        filterCondition?: string;
+    };
+    condition?: {
+        enabled: boolean;
+        field?: string;
+        operator?: string;
+        value?: string | number;
+        fallbackNodeId?: string;
+    };
+    priority?: number;
+    blocking?: boolean;
+    timeout?: number;
+}
+
+export interface WorkflowEdge {
+    id: string;
+    sourceNodeId: string;
+    targetNodeId: string;
+    edgeType: 'data_flow' | 'conditional' | 'storage_read' | 'storage_write';
+    config?: WorkflowEdgeConfig;
+}
+
+export interface AgentWorkflow {
+    id: string;
+    user_id?: string;
+    name: string;
+    name_cn?: string;
+    description?: string;
+    icon: string;
+    is_template: boolean;
+    template_category?: string;
+    nodes: WorkflowNode[];
+    edges: WorkflowEdge[];
+    default_settings?: Record<string, unknown>;
+    status: 'draft' | 'active' | 'archived';
+    version: number;
+    node_count: number;
+    edge_count: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface WorkflowCreate {
+    name: string;
+    name_cn?: string;
+    description?: string;
+    icon?: string;
+    nodes?: WorkflowNode[];
+    edges?: WorkflowEdge[];
+    default_settings?: Record<string, unknown>;
+}
+
+export interface WorkflowUpdate {
+    name?: string;
+    name_cn?: string;
+    description?: string;
+    icon?: string;
+    nodes?: WorkflowNode[];
+    edges?: WorkflowEdge[];
+    default_settings?: Record<string, unknown>;
+    status?: string;
+}
+
+// =============================================================================
+// Agent Workflow API
+// =============================================================================
+
+export const workflowApi = {
+    // List user's workflows
+    list: () =>
+        fetchApiWithAuth<{ workflows: AgentWorkflow[] }>('/workflows'),
+
+    // List system templates
+    getTemplates: () =>
+        fetchApiWithAuth<{ templates: AgentWorkflow[] }>('/workflows/templates'),
+
+    // Create workflow
+    create: (data: WorkflowCreate) =>
+        fetchApiWithAuth<AgentWorkflow>('/workflows', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    // Get workflow details
+    get: (id: string) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${id}`),
+
+    // Update workflow
+    update: (id: string, data: WorkflowUpdate) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
+    // Delete workflow
+    delete: (id: string) =>
+        fetchApiWithAuth<void>(`/workflows/${id}`, {
+            method: 'DELETE',
+        }),
+
+    // Clone workflow
+    clone: (id: string) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${id}/clone`, {
+            method: 'POST',
+        }),
+
+    // Node operations
+    addNode: (workflowId: string, node: WorkflowNode) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${workflowId}/nodes`, {
+            method: 'POST',
+            body: JSON.stringify(node),
+        }),
+
+    updateNode: (workflowId: string, nodeId: string, node: WorkflowNode) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${workflowId}/nodes/${nodeId}`, {
+            method: 'PUT',
+            body: JSON.stringify(node),
+        }),
+
+    deleteNode: (workflowId: string, nodeId: string) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${workflowId}/nodes/${nodeId}`, {
+            method: 'DELETE',
+        }),
+
+    // Edge operations
+    addEdge: (workflowId: string, edge: WorkflowEdge) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${workflowId}/edges`, {
+            method: 'POST',
+            body: JSON.stringify(edge),
+        }),
+
+    updateEdge: (workflowId: string, edgeId: string, edge: WorkflowEdge) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${workflowId}/edges/${edgeId}`, {
+            method: 'PUT',
+            body: JSON.stringify(edge),
+        }),
+
+    deleteEdge: (workflowId: string, edgeId: string) =>
+        fetchApiWithAuth<AgentWorkflow>(`/workflows/${workflowId}/edges/${edgeId}`, {
+            method: 'DELETE',
+        }),
+
+    // Mission operations
+    listMissions: (workflowId: string) =>
+        fetchApiWithAuth<{ missions: WorkflowMission[] }>(`/workflows/${workflowId}/missions`),
+
+    createMission: (workflowId: string, data: MissionCreate) =>
+        fetchApiWithAuth<WorkflowMission>(`/workflows/${workflowId}/missions`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    getMission: (workflowId: string, missionId: string) =>
+        fetchApiWithAuth<WorkflowMission>(`/workflows/${workflowId}/missions/${missionId}`),
+
+    updateMission: (workflowId: string, missionId: string, data: MissionUpdate) =>
+        fetchApiWithAuth<WorkflowMission>(`/workflows/${workflowId}/missions/${missionId}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
+    deleteMission: (workflowId: string, missionId: string) =>
+        fetchApiWithAuth<void>(`/workflows/${workflowId}/missions/${missionId}`, {
+            method: 'DELETE',
+        }),
+
+    saveMissionToLibrary: (workflowId: string, missionId: string, data?: { folder_id?: string; tags?: string[] }) =>
+        fetchApiWithAuth<{ document_id: string; message: string }>(
+            `/workflows/${workflowId}/missions/${missionId}/save-to-library`,
+            {
+                method: 'POST',
+                body: JSON.stringify(data || {}),
+            }
+        ),
+
+    // Execute mission with SSE (returns URL for EventSource)
+    getExecuteMissionUrl: (workflowId: string, missionId: string) =>
+        `/api/workflows/${workflowId}/missions/${missionId}/execute`,
+};
+
+// =============================================================================
+// Workflow Mission Types
+// =============================================================================
+
+export interface WorkflowMissionSubTask {
+    id: string;
+    title: string;
+    agent_type: string;
+    agent_name: string;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    input?: string;
+    output?: string;
+    started_at?: string;
+    completed_at?: string;
+    duration_ms?: number;
+}
+
+export interface WorkflowMission {
+    id: string;
+    workflow_id: string;
+    user_id: string;
+    leader_type: string;
+    leader_name: string;
+    description: string;
+    status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
+    progress: {
+        current: number;
+        total: number;
+    };
+    sub_tasks: WorkflowMissionSubTask[];
+    result?: string;
+    created_at: string;
+    updated_at: string;
+    started_at?: string;
+    completed_at?: string;
+}
+
+export interface MissionCreate {
+    leader_type: string;
+    leader_name: string;
+    description: string;
+    email?: string;
+    sub_tasks: Array<{
+        id: string;
+        title: string;
+        agent_type: string;
+        agent_name: string;
+        status?: string;
+        input?: string;
+    }>;
+}
+
+export interface MissionUpdate {
+    status?: string;
+    progress_current?: number;
+    progress_total?: number;
+    sub_tasks?: WorkflowMissionSubTask[];
+    result?: string;
+}

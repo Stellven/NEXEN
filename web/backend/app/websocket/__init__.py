@@ -101,15 +101,36 @@ class EventBroadcaster:
         }, topic=f"research:{task_id}")
 
     @staticmethod
-    async def agent_status(agent_id: str, status: str, task: Optional[str] = None):
-        """Broadcast agent status change."""
-        await manager.broadcast({
+    async def agent_status(
+        agent_id: str,
+        status: str,
+        task: Optional[str] = None,
+        progress: Optional[float] = None,
+        session_id: Optional[str] = None,
+    ):
+        """
+        Broadcast agent status change.
+
+        Args:
+            agent_id: The agent type identifier
+            status: Status string ('idle', 'initializing', 'running', 'waiting', 'completed', 'failed')
+            task: Current task description
+            progress: Progress percentage (0-100)
+            session_id: Optional session ID to scope the broadcast
+        """
+        message = {
             "type": "agent:status",
             "agent_id": agent_id,
             "status": status,
             "task": task,
+            "progress": progress,
             "timestamp": datetime.now().isoformat(),
-        }, topic=f"agent:{agent_id}")
+        }
+
+        if session_id:
+            await manager.broadcast(message, topic=f"session:{session_id}")
+        else:
+            await manager.broadcast(message, topic=f"agent:{agent_id}")
 
     @staticmethod
     async def agent_output(agent_id: str, output: str, streaming: bool = False):
@@ -121,6 +142,94 @@ class EventBroadcaster:
             "streaming": streaming,
             "timestamp": datetime.now().isoformat(),
         }, topic=f"agent:{agent_id}")
+
+    @staticmethod
+    async def data_flow(
+        from_agent: str,
+        to_agent: str,
+        data_type: str = "result",
+        session_id: Optional[str] = None,
+    ):
+        """
+        Broadcast data flow event between agents.
+
+        Args:
+            from_agent: Source agent type
+            to_agent: Destination agent type
+            data_type: Type of data being passed ('result', 'finding', 'reference', etc.)
+            session_id: Optional session ID to scope the broadcast
+        """
+        message = {
+            "type": "data:flow",
+            "from_agent": from_agent,
+            "to_agent": to_agent,
+            "data_type": data_type,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        if session_id:
+            await manager.broadcast(message, topic=f"session:{session_id}")
+        else:
+            await manager.broadcast(message)
+
+    @staticmethod
+    async def task_update(
+        task_id: str,
+        status: str,
+        agent_type: str,
+        session_id: str,
+        description: Optional[str] = None,
+        progress: Optional[float] = None,
+    ):
+        """
+        Broadcast task status update.
+
+        Args:
+            task_id: The research task ID
+            status: Task status ('pending', 'in_progress', 'completed', 'failed', 'blocked')
+            agent_type: The agent handling this task
+            session_id: The session ID
+            description: Optional task description
+            progress: Optional progress percentage
+        """
+        await manager.broadcast({
+            "type": "task:update",
+            "task_id": task_id,
+            "status": status,
+            "agent_type": agent_type,
+            "description": description,
+            "progress": progress,
+            "timestamp": datetime.now().isoformat(),
+        }, topic=f"session:{session_id}")
+
+    @staticmethod
+    async def session_status(
+        session_id: str,
+        status: str,
+        total_tasks: int,
+        completed_tasks: int,
+        active_agents: list[str],
+    ):
+        """
+        Broadcast session overall status.
+
+        Args:
+            session_id: The research session ID
+            status: Overall status ('planning', 'executing', 'completed', 'failed')
+            total_tasks: Total number of tasks
+            completed_tasks: Number of completed tasks
+            active_agents: List of currently active agent types
+        """
+        await manager.broadcast({
+            "type": "session:status",
+            "session_id": session_id,
+            "status": status,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "active_agents": active_agents,
+            "progress": (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0,
+            "timestamp": datetime.now().isoformat(),
+        }, topic=f"session:{session_id}")
 
     @staticmethod
     async def research_completed(task_id: str, result: dict):

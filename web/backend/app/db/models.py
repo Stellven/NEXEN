@@ -12,6 +12,7 @@ Models:
 - Team, TeamMember, TeamTask (My Teams)
 - InstalledTool (AI Tools)
 - AgentProfile, AgentExecution, ResearchTask (Multi-Agent Research)
+- AgentWorkflow (Agent Workflow DAG Templates)
 """
 
 import uuid
@@ -57,6 +58,7 @@ class User(Base):
     installed_tools: Mapped[list["InstalledTool"]] = relationship("InstalledTool", back_populates="user")
     search_histories: Mapped[list["SearchHistory"]] = relationship("SearchHistory", back_populates="user")
     agent_profiles: Mapped[list["AgentProfile"]] = relationship("AgentProfile", back_populates="user")
+    agent_workflows: Mapped[list["AgentWorkflow"]] = relationship("AgentWorkflow", back_populates="user")
 
     def to_dict(self, include_email: bool = False) -> dict:
         """Convert to dictionary, excluding sensitive fields."""
@@ -74,27 +76,30 @@ class User(Base):
 
 class UserSettings(Base):
     """User settings including API keys."""
-    
+
     __tablename__ = "user_settings"
-    
+
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
-    
+
     # API Keys (encrypted in storage)
     openai_api_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     anthropic_api_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     google_api_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    
+    deepseek_api_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    dashscope_api_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 阿里云/千问
+    serper_api_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 联网搜索
+
     # Preferences
     default_model: Mapped[str] = mapped_column(String(100), default="openai/gpt-4o")
     theme: Mapped[str] = mapped_column(String(20), default="dark")
     language: Mapped[str] = mapped_column(String(10), default="zh")
-    
+
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="settings")
-    
+
     def to_dict(self, mask_keys: bool = True) -> dict:
         """Convert to dictionary, optionally masking API keys."""
         def mask_key(key: Optional[str]) -> Optional[str]:
@@ -103,19 +108,72 @@ class UserSettings(Base):
             if len(key) <= 8:
                 return "****"
             return key[:4] + "****" + key[-4:]
-        
+
         return {
             "id": self.id,
             "user_id": self.user_id,
             "openai_api_key": mask_key(self.openai_api_key),
             "anthropic_api_key": mask_key(self.anthropic_api_key),
             "google_api_key": mask_key(self.google_api_key),
+            "deepseek_api_key": mask_key(self.deepseek_api_key),
+            "dashscope_api_key": mask_key(self.dashscope_api_key),
+            "serper_api_key": mask_key(self.serper_api_key),
             "default_model": self.default_model,
             "theme": self.theme,
             "language": self.language,
             "has_openai": bool(self.openai_api_key),
             "has_anthropic": bool(self.anthropic_api_key),
             "has_google": bool(self.google_api_key),
+            "has_deepseek": bool(self.deepseek_api_key),
+            "has_dashscope": bool(self.dashscope_api_key),
+            "has_serper": bool(self.serper_api_key),
+        }
+
+
+class APIUsageStats(Base):
+    """API usage statistics for tracking costs and quotas."""
+
+    __tablename__ = "api_usage_stats"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    # Provider identification
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # openai, anthropic, google, deepseek, dashscope
+    date: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)  # Date (day granularity)
+
+    # Usage metrics
+    request_count: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Cost estimation (in USD)
+    estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Model-level breakdown (JSON)
+    model_usage: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)  # {"gpt-4o": {"requests": 5, "tokens": 1000, "cost": 0.05}}
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", backref="usage_stats")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "provider": self.provider,
+            "date": self.date.isoformat() if self.date else None,
+            "request_count": self.request_count,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+            "estimated_cost": self.estimated_cost,
+            "model_usage": self.model_usage or {},
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 
@@ -931,12 +989,31 @@ class ResearchTask(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     assigned_agent: Mapped[str] = mapped_column(String(50), nullable=False)  # agent_type
     priority: Mapped[str] = mapped_column(String(20), default="medium")  # critical, high, medium, low
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, in_progress, completed, failed
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, in_progress, completed, failed, blocked
 
     # Execution order and dependencies
     dependencies: Mapped[Optional[dict]] = mapped_column(JSON, default=list)  # [task_id, ...]
     execution_order: Mapped[int] = mapped_column(Integer, default=0)
     execution_group: Mapped[int] = mapped_column(Integer, default=0)  # For parallel execution
+
+    # Task claiming (NEW)
+    created_by: Mapped[str] = mapped_column(String(50), default="meta_coordinator")
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    claimed_by: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # agent_type that claimed
+
+    # File-based data passing (NEW)
+    input_files: Mapped[Optional[dict]] = mapped_column(JSON, default=list)   # Files from dependent tasks
+    output_files: Mapped[Optional[dict]] = mapped_column(JSON, default=list)  # Files produced by this task
+
+    # Execution tracking (NEW)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, default=3)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=300)
+
+    # Quality assessment (NEW)
+    quality_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    reviewer_agent: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Output
     output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -961,7 +1038,235 @@ class ResearchTask(Base):
             "dependencies": self.dependencies or [],
             "execution_order": self.execution_order,
             "execution_group": self.execution_group,
+            "created_by": self.created_by,
+            "claimed_at": self.claimed_at.isoformat() if self.claimed_at else None,
+            "claimed_by": self.claimed_by,
+            "input_files": self.input_files or [],
+            "output_files": self.output_files or [],
+            "retry_count": self.retry_count,
+            "quality_score": self.quality_score,
             "output": self.output,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class TaskPlan(Base):
+    """Task plan created by Meta-Coordinator for research sessions."""
+
+    __tablename__ = "task_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("research_sessions.id", ondelete="CASCADE"), index=True)
+
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    original_task: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Plan structure (JSON)
+    plan_data: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    # Contains: subtasks, execution_order, estimated_time, agent_assignments
+
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft, active, completed, revised
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    activated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    session: Mapped["ResearchSession"] = relationship("ResearchSession", backref="task_plans")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "version": self.version,
+            "original_task": self.original_task,
+            "plan_data": self.plan_data or {},
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "activated_at": self.activated_at.isoformat() if self.activated_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+class AgentOutput(Base):
+    """Agent output file reference for file-based data passing."""
+
+    __tablename__ = "agent_outputs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("research_sessions.id", ondelete="CASCADE"), index=True)
+    execution_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("agent_executions.id", ondelete="SET NULL"), nullable=True)
+    task_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("research_tasks.id", ondelete="SET NULL"), nullable=True)
+
+    agent_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    output_type: Mapped[str] = mapped_column(String(30), default="markdown")  # markdown, json, yaml
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)  # Relative path within workspace
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    checksum: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # SHA256
+
+    # Content summary for quick retrieval
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    key_findings: Mapped[Optional[dict]] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    session: Mapped["ResearchSession"] = relationship("ResearchSession", backref="agent_outputs")
+    execution: Mapped[Optional["AgentExecution"]] = relationship("AgentExecution", backref="outputs")
+    task: Mapped[Optional["ResearchTask"]] = relationship("ResearchTask", backref="outputs")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "execution_id": self.execution_id,
+            "task_id": self.task_id,
+            "agent_type": self.agent_type,
+            "output_type": self.output_type,
+            "file_path": self.file_path,
+            "file_size": self.file_size,
+            "summary": self.summary,
+            "key_findings": self.key_findings or [],
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# =============================================================================
+# Agent Workflow Module
+# =============================================================================
+
+class AgentWorkflow(Base):
+    """Agent workflow template for DAG-based multi-agent orchestration."""
+
+    __tablename__ = "agent_workflows"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    # user_id is nullable - null means system template
+
+    # Basic info
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_cn: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    icon: Mapped[str] = mapped_column(String(50), default="Workflow")
+
+    # Template metadata
+    is_template: Mapped[bool] = mapped_column(Boolean, default=False)  # True = system template
+    template_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # research, analysis, writing
+
+    # DAG configuration (JSON)
+    nodes: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    # Structure: [{"id": "node_1", "agentType": "explorer", "position": {"x": 100, "y": 200}, "config": {...}}]
+
+    edges: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    # Structure: [{"id": "edge_1", "sourceNodeId": "node_1", "targetNodeId": "node_2", "edgeType": "data_flow", "config": {...}}]
+
+    # Default settings
+    default_settings: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    # Contains: max_concurrent_agents, timeout_per_task, storage_config, etc.
+
+    # Status and versioning
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft, active, archived
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="agent_workflows")
+
+    # Relationships
+    missions: Mapped[list["WorkflowMission"]] = relationship("WorkflowMission", back_populates="workflow", cascade="all, delete-orphan")
+
+    def to_dict(self, include_dag: bool = True) -> dict:
+        data = {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "name_cn": self.name_cn,
+            "description": self.description,
+            "icon": self.icon,
+            "is_template": self.is_template,
+            "template_category": self.template_category,
+            "status": self.status,
+            "version": self.version,
+            "node_count": len(self.nodes) if self.nodes else 0,
+            "edge_count": len(self.edges) if self.edges else 0,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_dag:
+            data["nodes"] = self.nodes or []
+            data["edges"] = self.edges or []
+            data["default_settings"] = self.default_settings or {}
+        return data
+
+
+# =============================================================================
+# Workflow Mission Module
+# =============================================================================
+
+class WorkflowMission(Base):
+    """Workflow mission execution record."""
+
+    __tablename__ = "workflow_missions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    workflow_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_workflows.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    # Mission info
+    leader_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    leader_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Status
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, running, completed, cancelled, failed
+
+    # Progress
+    progress_current: Mapped[int] = mapped_column(Integer, default=0)
+    progress_total: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Sub-tasks stored as JSON array
+    sub_tasks: Mapped[Optional[dict]] = mapped_column(JSON, default=list)
+    # Structure: [{id, title, agent_type, agent_name, status, input, output, started_at, completed_at, duration_ms}]
+
+    # Final result
+    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Notification
+    notification_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    workflow: Mapped["AgentWorkflow"] = relationship("AgentWorkflow", back_populates="missions")
+    user: Mapped["User"] = relationship("User", backref="workflow_missions")
+
+    def to_dict(self, include_sub_tasks: bool = True) -> dict:
+        data = {
+            "id": self.id,
+            "workflow_id": self.workflow_id,
+            "user_id": self.user_id,
+            "leader_type": self.leader_type,
+            "leader_name": self.leader_name,
+            "description": self.description,
+            "status": self.status,
+            "progress": {
+                "current": self.progress_current,
+                "total": self.progress_total,
+            },
+            "result": self.result,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+        if include_sub_tasks:
+            data["sub_tasks"] = self.sub_tasks or []
+        return data

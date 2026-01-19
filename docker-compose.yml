@@ -10,6 +10,11 @@ services:
       - SECRET_KEY=${SECRET_KEY:-nexen-dev-secret-change-in-production}
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
+      # LLM API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
     volumes:
       - ./research_workspace:/app/research_workspace
       - sqlite_data:/app/data

@@ -61,6 +61,34 @@ class EvolutionRequest(SkillRequest):
     technology: str = Field(..., description="Technology to analyze")
 
 
+# Anthropic skill models
+class AnthropicSkillInfo(BaseModel):
+    """Anthropic skill information."""
+    name: str
+    display_name: str
+    description: str
+    category: str
+    license: str
+    has_scripts: bool
+    resources: list[str]
+
+
+class AnthropicSkillListResponse(BaseModel):
+    """List of Anthropic skills."""
+    total: int
+    skills: list[AnthropicSkillInfo]
+
+
+class AnthropicSkillDetailResponse(BaseModel):
+    """Detailed Anthropic skill information."""
+    name: str
+    description: str
+    category: str
+    instructions: str
+    resources: dict[str, str]
+    scripts: list[str]
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -203,3 +231,70 @@ Provide:
         return SkillExecuteResponse(skill="evolution", success=True, result=result)
     except Exception as e:
         return SkillExecuteResponse(skill="evolution", success=False, error=str(e))
+
+
+# ============================================================================
+# Anthropic Skills Endpoints
+# ============================================================================
+
+@router.get("/anthropic", response_model=AnthropicSkillListResponse)
+async def list_anthropic_skills(category: Optional[str] = None):
+    """List all available Anthropic skills."""
+    from nexen.skills.anthropic_loader import list_anthropic_skills
+
+    skills = list_anthropic_skills()
+
+    if category:
+        skills = [s for s in skills if s["category"] == category]
+
+    return AnthropicSkillListResponse(
+        total=len(skills),
+        skills=[AnthropicSkillInfo(**s) for s in skills],
+    )
+
+
+@router.get("/anthropic/{skill_name}", response_model=AnthropicSkillDetailResponse)
+async def get_anthropic_skill(skill_name: str):
+    """Get detailed information about an Anthropic skill."""
+    from nexen.skills.anthropic_loader import get_anthropic_skill as get_skill
+
+    skill = get_skill(skill_name)
+    if not skill:
+        raise HTTPException(status_code=404, detail=f"Skill not found: {skill_name}")
+
+    return AnthropicSkillDetailResponse(
+        name=skill.name,
+        description=skill.description,
+        category=skill.category.value,
+        instructions=skill.instructions,
+        resources=skill.resources,
+        scripts=skill.scripts,
+    )
+
+
+@router.get("/anthropic/{skill_name}/context")
+async def get_anthropic_skill_context(skill_name: str, include_resources: bool = True):
+    """Get skill instructions for LLM context injection."""
+    from nexen.skills.anthropic_loader import get_loader
+
+    loader = get_loader()
+    context = loader.get_skill_instructions(skill_name, include_resources)
+
+    if not context:
+        raise HTTPException(status_code=404, detail=f"Skill not found: {skill_name}")
+
+    return {"skill": skill_name, "context": context}
+
+
+@router.get("/anthropic/{skill_name}/scripts/{script_name}")
+async def get_anthropic_skill_script(skill_name: str, script_name: str):
+    """Get content of a skill script file."""
+    from nexen.skills.anthropic_loader import get_loader
+
+    loader = get_loader()
+    content = loader.get_skill_script(skill_name, script_name)
+
+    if not content:
+        raise HTTPException(status_code=404, detail=f"Script not found: {script_name}")
+
+    return {"skill": skill_name, "script": script_name, "content": content}

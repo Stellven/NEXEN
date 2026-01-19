@@ -15,9 +15,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import User, UserSettings, AgentProfile
+from app.db.models import User, AgentProfile
 from app.auth.deps import get_current_active_user
-from app.auth.security import decrypt_api_key
+from app.services.api_key_storage import get_user_api_keys as get_file_api_keys
 
 router = APIRouter()
 
@@ -341,21 +341,11 @@ class AgentTestResponse(BaseModel):
 # Helper Functions
 # =============================================================================
 
-def get_user_api_keys(user: User, db: Session) -> dict[str, str]:
-    """Get decrypted API keys for a user."""
-    settings = db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
-    if not settings:
-        return {}
-
-    keys = {}
-    if settings.openai_api_key:
-        keys["openai"] = decrypt_api_key(settings.openai_api_key)
-    if settings.anthropic_api_key:
-        keys["anthropic"] = decrypt_api_key(settings.anthropic_api_key)
-    if settings.google_api_key:
-        keys["google"] = decrypt_api_key(settings.google_api_key)
-
-    return keys
+def get_user_api_keys_for_agent(user_id: str) -> dict[str, str]:
+    """Get API keys for a user from file storage."""
+    api_keys = get_file_api_keys(user_id)
+    # Filter out None values
+    return {k: v for k, v in api_keys.items() if v}
 
 
 # =============================================================================
@@ -719,14 +709,15 @@ async def test_agent(
     if not profile:
         raise HTTPException(status_code=404, detail="Agent profile not found")
 
-    # Get API keys
-    api_keys = get_user_api_keys(current_user, db)
+    # Get API keys from file storage
+    api_keys = get_user_api_keys_for_agent(current_user.id)
     if not api_keys:
         raise HTTPException(status_code=400, detail="请先在设置页面配置 API Keys")
 
     # Determine model and API key
     model = profile.role_model
     api_key = None
+    base_url = None
 
     if "openai" in model and api_keys.get("openai"):
         api_key = api_keys["openai"]
@@ -734,23 +725,38 @@ async def test_agent(
         api_key = api_keys["anthropic"]
     elif "google" in model and api_keys.get("google"):
         api_key = api_keys["google"]
+    elif "deepseek" in model and api_keys.get("deepseek"):
+        api_key = api_keys["deepseek"]
+        base_url = "https://api.deepseek.com/v1"
+    elif "qwen" in model and api_keys.get("dashscope"):
+        api_key = api_keys["dashscope"]
     elif api_keys.get("openai"):
+        # Fallback to OpenAI if available
         model = "openai/gpt-4o"
         api_key = api_keys["openai"]
+    elif api_keys.get("deepseek"):
+        # Fallback to DeepSeek
+        model = "deepseek/deepseek-chat"
+        api_key = api_keys["deepseek"]
+        base_url = "https://api.deepseek.com/v1"
     else:
         raise HTTPException(status_code=400, detail="No suitable API key found for this model")
 
     try:
-        response = await litellm.acompletion(
-            model=model,
-            messages=[
+        completion_kwargs = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": profile.persona or "You are a helpful assistant."},
                 {"role": "user", "content": request.task}
             ],
-            max_tokens=min(profile.max_tokens, 1000),  # Limit for test
-            temperature=profile.temperature,
-            api_key=api_key,
-        )
+            "max_tokens": min(profile.max_tokens, 1000),  # Limit for test
+            "temperature": profile.temperature,
+            "api_key": api_key,
+        }
+        if base_url:
+            completion_kwargs["api_base"] = base_url
+
+        response = await litellm.acompletion(**completion_kwargs)
 
         result = response.choices[0].message.content
         tokens_used = response.usage.total_tokens if response.usage else 0
