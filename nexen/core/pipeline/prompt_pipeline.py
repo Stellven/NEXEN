@@ -9,9 +9,10 @@ Implements the prompt generation, review, and refinement cycle:
 The pipeline ensures high-quality prompts for each agent execution.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import litellm
 
@@ -208,6 +209,72 @@ class PromptPipeline:
             review_history=review_history,
         )
 
+def extract_quota_info(exc: Exception) -> dict:
+    info = {}
+
+    # LiteLLM often attaches the raw response
+    body = None
+    if hasattr(exc, "response") and exc.response is not None:
+        body = getattr(exc.response, "json", None)
+    elif hasattr(exc, "body"):
+        body = exc.body
+
+    if isinstance(body, dict):
+        error = body.get("error", {})
+        info["status"] = error.get("status")
+        info["message"] = error.get("message")
+
+        details = error.get("details", [])
+        for d in details:
+            if d.get("@type", "").endswith("QuotaFailure"):
+                violations = d.get("violations", [])
+                if violations:
+                    v = violations[0]
+                    info["quotaMetric"] = v.get("quotaMetric")
+                    info["quotaId"] = v.get("quotaId")
+                    info["quotaDimensions"] = v.get("quotaDimensions")
+                    info["quotaValue"] = v.get("quotaValue")
+
+            if d.get("@type", "").endswith("RetryInfo"):
+                info["retryDelay"] = d.get("retryDelay")
+
+    return info
+
+async def _call_llm_with_retry(self, **kwargs) -> Any:
+    max_retries = 5
+    base_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            return await litellm.acompletion(**kwargs)
+
+        except Exception as e:
+            quota_info = extract_quota_info(e)
+
+            is_rate_limit = (
+                "429" in str(e)
+                or quota_info.get("status") == "RESOURCE_EXHAUSTED"
+            )
+
+            if is_rate_limit and attempt < max_retries - 1:
+                delay = base_delay * (2**attempt)
+
+                logger.warning(
+                    "Rate limit hit | "
+                    f"metric={quota_info.get('quotaMetric')} | "
+                    f"quotaId={quota_info.get('quotaId')} | "
+                    f"model={quota_info.get('quotaDimensions', {}).get('model')} | "
+                    f"limit={quota_info.get('quotaValue')} | "
+                    f"retryDelay={quota_info.get('retryDelay')} | "
+                    f"backoff={delay}s | "
+                    f"attempt={attempt + 1}/{max_retries}"
+                )
+
+                await asyncio.sleep(delay)
+            else:
+                raise
+
+
     async def _generate_initial_prompt(
         self,
         task_description: str,
@@ -242,7 +309,7 @@ class PromptPipeline:
 [为具体任务生成用户提示词，要清晰、结构化、无歧义]
 """
 
-        response = await litellm.acompletion(
+        response = await self._call_llm_with_retry(
             model=self.module_config.generator_model,
             messages=[{"role": "user", "content": generation_prompt}],
             temperature=0.7,
@@ -296,7 +363,7 @@ safety: [分数]/10
 - [改进建议2]
 """
 
-        response = await litellm.acompletion(
+        response = await self._call_llm_with_retry(
             model=self.module_config.reviewer_model,
             messages=[{"role": "user", "content": review_prompt}],
             temperature=0.3,
@@ -348,7 +415,7 @@ safety: [分数]/10
 [改进后的用户提示词]
 """
 
-        response = await litellm.acompletion(
+        response = await self._call_llm_with_retry(
             model=self.module_config.refiner_model,
             messages=[{"role": "user", "content": refine_prompt}],
             temperature=0.5,

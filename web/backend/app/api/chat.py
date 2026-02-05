@@ -5,7 +5,7 @@ Chat API endpoints for AI Ask functionality.
 import json
 import logging
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,9 +13,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
-from app.db.models import User, Conversation, Message
 from app.auth.deps import get_current_active_user
+from app.db.database import get_db
+from app.db.models import Conversation, Message, User
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,7 +51,7 @@ class MessageResponse(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str = Field(..., min_length=1)
-    model: Optional[str] = "openai/gpt-4o"
+    model: Optional[str] = "google/gemini-2.0-flash"
     features: Optional[List[str]] = []  # web_search, deep_research, etc.
     knowledge_bases: Optional[List[str]] = []  # folder:id, doc:id
     skills: Optional[List[str]] = []  # Anthropic skill names
@@ -99,7 +99,9 @@ async def list_conversations(
     )
 
 
-@router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_conversation(
     request: CreateConversationRequest,
     db: Session = Depends(get_db),
@@ -277,11 +279,18 @@ async def send_message(
         try:
             # Get user's API keys from file storage
             from app.services.api_key_storage import get_user_api_keys as get_file_api_keys
+            from app.services.search_service import (
+                extract_search_query,
+                format_search_results_for_prompt,
+                search_web,
+                should_search,
+            )
             from app.services.usage_service import record_usage
-            from app.services.search_service import search_web, format_search_results_for_prompt, should_search, extract_search_query
 
             api_keys = get_file_api_keys(current_user.id)
-            logger.info(f"User ID: {current_user.id}, API keys available: {list(api_keys.keys())}, has values: {[k for k,v in api_keys.items() if v]}")
+            logger.info(
+                f"User ID: {current_user.id}, API keys available: {list(api_keys.keys())}, has values: {[k for k, v in api_keys.items() if v]}"
+            )
 
             # Get all messages for context
             messages = (
@@ -301,6 +310,7 @@ async def send_message(
             if request.skills:
                 try:
                     from nexen.skills.anthropic_loader import get_skill_context
+
                     skill_contexts = []
                     for skill_name in request.skills:
                         ctx = get_skill_context(skill_name)
@@ -361,10 +371,13 @@ async def send_message(
             elif model.startswith("qwen/"):
                 api_key = api_keys.get("dashscope")
                 provider = "dashscope"
+            elif model.startswith("local/"):
+                api_key = "lm-studio"  # Dummy key
+                provider = "local"
 
             logger.info(f"Model: {model}, Provider: {provider}, API key exists: {bool(api_key)}")
 
-            if not api_key:
+            if not api_key and provider != "local":
                 error_msg = f"请先在设置中配置相应的 API 密钥 (provider: {provider})"
                 yield f"data: {json.dumps({'error': error_msg})}\n\n"
                 return
@@ -374,6 +387,7 @@ async def send_message(
 
             if model.startswith("openai/"):
                 import openai
+
                 client = openai.OpenAI(api_key=api_key)
                 model_name = model.replace("openai/", "")
 
@@ -389,12 +403,13 @@ async def send_message(
                         content = chunk.choices[0].delta.content
                         full_response += content
                         yield f"data: {json.dumps({'content': content})}\n\n"
-                    if hasattr(chunk, 'usage') and chunk.usage:
+                    if hasattr(chunk, "usage") and chunk.usage:
                         prompt_tokens = chunk.usage.prompt_tokens
                         completion_tokens = chunk.usage.completion_tokens
 
             elif model.startswith("anthropic/"):
                 import anthropic
+
                 client = anthropic.Anthropic(api_key=api_key)
                 model_name = model.replace("anthropic/", "")
 
@@ -424,6 +439,7 @@ async def send_message(
 
             elif model.startswith("google/"):
                 import google.generativeai as genai
+
                 genai.configure(api_key=api_key)
                 model_name = model.replace("google/", "")
 
@@ -449,10 +465,8 @@ async def send_message(
             elif model.startswith("deepseek/"):
                 # DeepSeek uses OpenAI-compatible API
                 import openai
-                client = openai.OpenAI(
-                    api_key=api_key,
-                    base_url="https://api.deepseek.com/v1"
-                )
+
+                client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
                 model_name = model.replace("deepseek/", "")
 
                 stream = client.chat.completions.create(
@@ -467,7 +481,7 @@ async def send_message(
                         content = chunk.choices[0].delta.content
                         full_response += content
                         yield f"data: {json.dumps({'content': content})}\n\n"
-                    if hasattr(chunk, 'usage') and chunk.usage:
+                    if hasattr(chunk, "usage") and chunk.usage:
                         prompt_tokens = chunk.usage.prompt_tokens
                         completion_tokens = chunk.usage.completion_tokens
 
@@ -475,13 +489,14 @@ async def send_message(
                 # Qwen/DashScope
                 import dashscope
                 from dashscope import Generation
+
                 dashscope.api_key = api_key
                 model_name = model.replace("qwen/", "")
 
                 responses = Generation.call(
                     model=model_name,
                     messages=history,
-                    result_format='message',
+                    result_format="message",
                     stream=True,
                     incremental_output=True,
                 )
@@ -502,6 +517,38 @@ async def send_message(
                         error_msg = f"DashScope error: {response.code} - {response.message}"
                         yield f"data: {json.dumps({'error': error_msg})}\n\n"
                         return
+
+            elif model.startswith("local/"):
+                import openai
+
+                # Default to host.docker.internal for Mac/Windows Docker Desktop
+                # For Linux, this might need adjustment (e.g. 172.17.0.1)
+                # Using 1234 as default port for LM Studio
+                base_url = "http://host.docker.internal:1234/v1"
+
+                client = openai.OpenAI(api_key="lm-studio", base_url=base_url)
+
+                try:
+                    stream = client.chat.completions.create(
+                        model="local-model",
+                        messages=history,
+                        stream=True,
+                        stream_options={"include_usage": True},
+                    )
+
+                    for chunk in stream:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            content = chunk.choices[0].delta.content
+                            full_response += content
+                            yield f"data: {json.dumps({'content': content})}\n\n"
+                        if hasattr(chunk, "usage") and chunk.usage:
+                            prompt_tokens = chunk.usage.prompt_tokens
+                            completion_tokens = chunk.usage.completion_tokens
+
+                except Exception as e:
+                    error_msg = f"Local LLM connection failed. Ensure LM Studio is running on port 1234 with server enabled. Error: {str(e)}"
+                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                    return
 
             # Save assistant message with token usage
             assistant_message = Message(

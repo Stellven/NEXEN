@@ -8,15 +8,16 @@ Provides endpoints for:
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
-from app.db.models import User, AgentProfile
 from app.auth.deps import get_current_active_user
+from app.db.database import get_db
+from app.db.models import AgentProfile, User
 from app.services.api_key_storage import get_user_api_keys as get_file_api_keys
 
 router = APIRouter()
@@ -32,13 +33,18 @@ DEFAULT_AGENTS = [
         "display_name": "Meta-Coordinator",
         "display_name_cn": "元协调者",
         "cluster": "coordination",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.7,
         "max_tokens": 4000,
         "persona": "你是一位资深的AI研究PI，负责分解任务、协调Agent并整合输出。",
         "traits": {"leadership": "very_high", "decision_making": "very_high"},
-        "responsibilities": ["分解复杂研究任务", "分配任务给合适的Agent", "整合各Agent输出", "做出最终决策"],
+        "responsibilities": [
+            "分解复杂研究任务",
+            "分配任务给合适的Agent",
+            "整合各Agent输出",
+            "做出最终决策",
+        ],
         "data_sources": [],
         "enabled_skills": [],
     },
@@ -47,7 +53,7 @@ DEFAULT_AGENTS = [
         "display_name": "Logician",
         "display_name_cn": "逻辑推理者",
         "cluster": "reasoning",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.1,
         "max_tokens": 4000,
@@ -62,7 +68,7 @@ DEFAULT_AGENTS = [
         "display_name": "Critic",
         "display_name_cn": "批判者",
         "cluster": "reasoning",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.3,
         "max_tokens": 4000,
@@ -77,7 +83,7 @@ DEFAULT_AGENTS = [
         "display_name": "Connector",
         "display_name_cn": "连接者",
         "cluster": "reasoning",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.7,
         "max_tokens": 4000,
@@ -92,7 +98,7 @@ DEFAULT_AGENTS = [
         "display_name": "Genealogist",
         "display_name_cn": "谱系学家",
         "cluster": "reasoning",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.5,
         "max_tokens": 4000,
@@ -107,7 +113,7 @@ DEFAULT_AGENTS = [
         "display_name": "Historian",
         "display_name_cn": "技术历史学家",
         "cluster": "reasoning",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.5,
         "max_tokens": 4000,
@@ -122,7 +128,7 @@ DEFAULT_AGENTS = [
         "display_name": "Explorer",
         "display_name_cn": "探索者",
         "cluster": "information",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.7,
         "max_tokens": 4000,
@@ -137,7 +143,7 @@ DEFAULT_AGENTS = [
         "display_name": "Social Scout",
         "display_name_cn": "社交侦察",
         "cluster": "information",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.6,
         "max_tokens": 4000,
@@ -152,7 +158,7 @@ DEFAULT_AGENTS = [
         "display_name": "CN Specialist",
         "display_name_cn": "中文专家",
         "cluster": "information",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.5,
         "max_tokens": 4000,
@@ -167,7 +173,7 @@ DEFAULT_AGENTS = [
         "display_name": "Vision Analyst",
         "display_name_cn": "视觉分析师",
         "cluster": "information",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.5,
         "max_tokens": 4000,
@@ -182,7 +188,7 @@ DEFAULT_AGENTS = [
         "display_name": "Builder",
         "display_name_cn": "构建者",
         "cluster": "production",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.3,
         "max_tokens": 8000,
@@ -197,7 +203,7 @@ DEFAULT_AGENTS = [
         "display_name": "Scribe",
         "display_name_cn": "记录者",
         "cluster": "production",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.5,
         "max_tokens": 8000,
@@ -212,7 +218,7 @@ DEFAULT_AGENTS = [
         "display_name": "Archivist",
         "display_name_cn": "档案管理员",
         "cluster": "production",
-        "role_model": "openai/gpt-4o-mini",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-flash",
         "temperature": 0.3,
         "max_tokens": 4000,
@@ -227,7 +233,7 @@ DEFAULT_AGENTS = [
         "display_name": "Prompt Engineer",
         "display_name_cn": "提示词工程师",
         "cluster": "production",
-        "role_model": "openai/gpt-4o",
+        "role_model": "google/gemini-2.0-flash",
         "fallback_model": "google/gemini-2.0-pro",
         "temperature": 0.5,
         "max_tokens": 4000,
@@ -244,21 +250,28 @@ DEFAULT_AGENTS = [
 # Pydantic Models
 # =============================================================================
 
+
 class PipelineConfig(BaseModel):
-    module1: dict = Field(default_factory=lambda: {
-        "generator_model": "openai/gpt-4o",
-        "pass_threshold": 40,
-        "max_iterations": 3
-    })
-    module2: dict = Field(default_factory=lambda: {
-        "token_budget": 8000,
-        "semantic_top_k": 5,
-        "default_insights": ["key_findings.md"]
-    })
-    module3: dict = Field(default_factory=lambda: {
-        "tasks": ["deduplication", "importance_ranking"],
-        "temperature": 0.3
-    })
+    module1: dict = Field(
+        default_factory=lambda: {
+            "generator_model": "openai/gpt-4o",
+            "pass_threshold": 40,
+            "max_iterations": 3,
+        }
+    )
+    module2: dict = Field(
+        default_factory=lambda: {
+            "token_budget": 8000,
+            "semantic_top_k": 5,
+            "default_insights": ["key_findings.md"],
+        }
+    )
+    module3: dict = Field(
+        default_factory=lambda: {
+            "tasks": ["deduplication", "importance_ranking"],
+            "temperature": 0.3,
+        }
+    )
 
 
 class AgentProfileCreate(BaseModel):
@@ -341,6 +354,7 @@ class AgentTestResponse(BaseModel):
 # Helper Functions
 # =============================================================================
 
+
 def get_user_api_keys_for_agent(user_id: str) -> dict[str, str]:
     """Get API keys for a user from file storage."""
     api_keys = get_file_api_keys(user_id)
@@ -351,6 +365,7 @@ def get_user_api_keys_for_agent(user_id: str) -> dict[str, str]:
 # =============================================================================
 # Endpoints
 # =============================================================================
+
 
 @router.get("/profiles/defaults")
 async def get_default_agents():
@@ -372,30 +387,45 @@ async def get_agent_profiles(
 
     profiles = query.order_by(AgentProfile.created_at.desc()).all()
 
+    # Helper to get current default model for an agent type
+    default_models = {a["agent_type"]: a["role_model"] for a in DEFAULT_AGENTS}
+
+    results = []
+    for p in profiles:
+        # If this is a default profile (not custom), always use the system default model
+        # This ensures updates to system defaults (like model upgrades) are reflected
+        role_model = p.role_model
+        if not p.is_custom and p.agent_type in default_models:
+            role_model = default_models[p.agent_type]
+
+        results.append(
+            AgentProfileResponse(
+                id=p.id,
+                user_id=p.user_id,
+                agent_type=p.agent_type,
+                display_name=p.display_name,
+                display_name_cn=p.display_name_cn,
+                cluster=p.cluster,
+                is_custom=p.is_custom,
+                role_model=role_model,
+                fallback_model=p.fallback_model,
+                temperature=p.temperature,
+                max_tokens=p.max_tokens,
+                persona=p.persona,
+                traits=p.traits or {},
+                responsibilities=p.responsibilities or [],
+                pipeline_config=p.pipeline_config or {},
+                data_sources=p.data_sources or [],
+                enabled_skills=p.enabled_skills or [],
+                is_enabled=p.is_enabled,
+                created_at=p.created_at,
+                updated_at=p.updated_at,
+            )
+        )
+
     return AgentProfileListResponse(
-        profiles=[AgentProfileResponse(
-            id=p.id,
-            user_id=p.user_id,
-            agent_type=p.agent_type,
-            display_name=p.display_name,
-            display_name_cn=p.display_name_cn,
-            cluster=p.cluster,
-            is_custom=p.is_custom,
-            role_model=p.role_model,
-            fallback_model=p.fallback_model,
-            temperature=p.temperature,
-            max_tokens=p.max_tokens,
-            persona=p.persona,
-            traits=p.traits or {},
-            responsibilities=p.responsibilities or [],
-            pipeline_config=p.pipeline_config or {},
-            data_sources=p.data_sources or [],
-            enabled_skills=p.enabled_skills or [],
-            is_enabled=p.is_enabled,
-            created_at=p.created_at,
-            updated_at=p.updated_at,
-        ) for p in profiles],
-        total=len(profiles)
+        profiles=results,
+        total=len(results),
     )
 
 
@@ -460,10 +490,11 @@ async def get_agent_profile(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get a specific agent profile."""
-    profile = db.query(AgentProfile).filter(
-        AgentProfile.id == profile_id,
-        AgentProfile.user_id == current_user.id
-    ).first()
+    profile = (
+        db.query(AgentProfile)
+        .filter(AgentProfile.id == profile_id, AgentProfile.user_id == current_user.id)
+        .first()
+    )
 
     if not profile:
         raise HTTPException(status_code=404, detail="Agent profile not found")
@@ -500,10 +531,11 @@ async def update_agent_profile(
     current_user: User = Depends(get_current_active_user),
 ):
     """Update an agent profile."""
-    profile = db.query(AgentProfile).filter(
-        AgentProfile.id == profile_id,
-        AgentProfile.user_id == current_user.id
-    ).first()
+    profile = (
+        db.query(AgentProfile)
+        .filter(AgentProfile.id == profile_id, AgentProfile.user_id == current_user.id)
+        .first()
+    )
 
     if not profile:
         raise HTTPException(status_code=404, detail="Agent profile not found")
@@ -570,10 +602,11 @@ async def delete_agent_profile(
     current_user: User = Depends(get_current_active_user),
 ):
     """Delete an agent profile."""
-    profile = db.query(AgentProfile).filter(
-        AgentProfile.id == profile_id,
-        AgentProfile.user_id == current_user.id
-    ).first()
+    profile = (
+        db.query(AgentProfile)
+        .filter(AgentProfile.id == profile_id, AgentProfile.user_id == current_user.id)
+        .first()
+    )
 
     if not profile:
         raise HTTPException(status_code=404, detail="Agent profile not found")
@@ -582,7 +615,11 @@ async def delete_agent_profile(
     db.commit()
 
 
-@router.post("/profiles/{profile_id}/clone", response_model=AgentProfileResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/profiles/{profile_id}/clone",
+    response_model=AgentProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def clone_agent_profile(
     profile_id: str,
     db: Session = Depends(get_db),
@@ -590,10 +627,11 @@ async def clone_agent_profile(
 ):
     """Clone an agent profile."""
     # Check if cloning from default or existing profile
-    original = db.query(AgentProfile).filter(
-        AgentProfile.id == profile_id,
-        AgentProfile.user_id == current_user.id
-    ).first()
+    original = (
+        db.query(AgentProfile)
+        .filter(AgentProfile.id == profile_id, AgentProfile.user_id == current_user.id)
+        .first()
+    )
 
     if original:
         # Clone from existing profile
@@ -654,10 +692,11 @@ async def initialize_default_profiles(
 ):
     """Initialize default agent profiles for the current user."""
     # Check if user already has profiles
-    existing_count = db.query(AgentProfile).filter(
-        AgentProfile.user_id == current_user.id,
-        AgentProfile.is_custom == False
-    ).count()
+    existing_count = (
+        db.query(AgentProfile)
+        .filter(AgentProfile.user_id == current_user.id, AgentProfile.is_custom == False)
+        .count()
+    )
 
     if existing_count > 0:
         return {"message": "Default profiles already initialized", "count": existing_count}
@@ -701,10 +740,11 @@ async def test_agent(
     """Test an agent with a simple task."""
     import litellm
 
-    profile = db.query(AgentProfile).filter(
-        AgentProfile.id == profile_id,
-        AgentProfile.user_id == current_user.id
-    ).first()
+    profile = (
+        db.query(AgentProfile)
+        .filter(AgentProfile.id == profile_id, AgentProfile.user_id == current_user.id)
+        .first()
+    )
 
     if not profile:
         raise HTTPException(status_code=404, detail="Agent profile not found")
@@ -747,7 +787,7 @@ async def test_agent(
             "model": model,
             "messages": [
                 {"role": "system", "content": profile.persona or "You are a helpful assistant."},
-                {"role": "user", "content": request.task}
+                {"role": "user", "content": request.task},
             ],
             "max_tokens": min(profile.max_tokens, 1000),  # Limit for test
             "temperature": profile.temperature,

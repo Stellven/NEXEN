@@ -190,10 +190,26 @@ class ModelRouter:
         is_fallback: bool = False,
     ) -> RoutingResult:
         """Create a routing result for a specific model."""
+        from nexen.config.models import resolve_model
+
+        # First, try to resolve the model via aliases
         if model_id not in MODELS:
-            # Handle unknown model by falling back to default
-            logger.warning(f"Unknown model {model_id}, falling back to default")
-            model_id = self.settings.default_model
+            resolved_id = resolve_model(model_id)
+            if resolved_id in MODELS:
+                logger.info(f"Resolved model alias {model_id} -> {resolved_id}")
+                model_id = resolved_id
+            else:
+                # Try the user's default_model setting
+                logger.warning(f"Unknown model {model_id}, trying user's default_model")
+                default_model = self.settings.default_model
+                resolved_default = resolve_model(default_model)
+                if resolved_default in MODELS:
+                    model_id = resolved_default
+                    logger.info(f"Using resolved default model: {model_id}")
+                else:
+                    # Use a safe, guaranteed fallback
+                    model_id = "gemini/gemini-2.0-flash"
+                    logger.warning(f"Default model {default_model} not found, using safe fallback: {model_id}")
 
         config = MODELS[model_id]
         return RoutingResult(

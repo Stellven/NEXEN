@@ -5,13 +5,15 @@ Agent Service - Direct agent execution.
 from dataclasses import dataclass
 from typing import Optional
 
+import os
+import litellm
 from nexen.core.base_agent import AgentOutput
 
 
 @dataclass
 class AgentResult:
     """Result from agent execution."""
-    
+
     result: str
     tokens_used: int
     duration_ms: int
@@ -27,25 +29,70 @@ class AgentService:
         task: str,
         session_id: Optional[str] = None,
         context: Optional[str] = None,
+        model_override: Optional[str] = None,
     ) -> AgentResult:
         """
         Execute a single agent.
-        
+
         Args:
             agent_id: Agent ID to execute
             task: Task for the agent
             session_id: Session ID
             context: Additional context
-            
+            model_override: Optional model ID to override default configuration
+
         Returns:
             AgentResult with output
         """
         # Dynamically get agent class
         agent = self._get_agent(agent_id, session_id)
-        
+
+        # Apply model override if provided
+        if model_override:
+            # Normalize model provider prefixes for litellm
+            # litellm expects 'gemini/' but frontend/config might use 'google/'
+            normalized_model = model_override
+            if normalized_model.startswith("google/"):
+                normalized_model = "gemini/" + normalized_model[7:]
+            elif normalized_model.startswith("local/"):
+                # Handle local models (e.g. LM Studio)
+                # Default to host.docker.internal for Docker; can be overridden via env
+                api_base = os.getenv("LOCAL_LLM_API_BASE", "http://host.docker.internal:1234/v1")
+
+                # Register model configuration in litellm's model_list
+                # This maps the local model ID to OpenAI-compatible endpoint settings
+                if not hasattr(litellm, "model_list") or litellm.model_list is None:
+                    litellm.model_list = []
+
+                # Register if not already present
+                if not any(m.get("model_name") == normalized_model for m in litellm.model_list):
+                    litellm.model_list.append({
+                        "model_name": normalized_model,
+                        "litellm_params": {
+                            "model": "openai/local-model",
+                            "api_base": api_base,
+                            "api_key": "lm-studio",
+                        }
+                    })
+
+            # Update main role model
+            agent.config.role_model = normalized_model
+
+            # Module 1: Prompt Pipeline
+            agent.config.module_1.generator_model = normalized_model
+            agent.config.module_1.reviewer_model = normalized_model
+            agent.config.module_1.refiner_model = normalized_model
+
+            # Module 2: Memory Retrieval (Analyzer)
+            agent.config.module_2.analyzer_model = normalized_model
+
+            # Module 3: Context Preprocessing
+            # Force override even if originally None/Empty to prevent fallback to OpenAI
+            agent.config.module_3.preprocessor_model = normalized_model
+
         # Execute
         output: AgentOutput = await agent.execute(task, context=context)
-        
+
         return AgentResult(
             result=output.result,
             tokens_used=output.tokens_used,

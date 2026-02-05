@@ -29,6 +29,7 @@ class ExplorerAgent(BaseAgent):
     """
 
     def __init__(self, session_id: Optional[str] = None, **kwargs):
+        kwargs.pop('agent_id', None)
         super().__init__(
             agent_id="explorer",
             session_id=session_id,

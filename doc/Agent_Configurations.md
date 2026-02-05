@@ -51,7 +51,7 @@
       max_tokens: 4000
 
   # 输出配置
-  output_config:
+  _config:
     write_to_raw: true
     raw_path: "raw/{agent_id}/"
     trigger_archivist: true

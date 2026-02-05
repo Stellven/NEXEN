@@ -24,6 +24,7 @@ class HistorianAgent(BaseAgent):
     """
 
     def __init__(self, session_id: Optional[str] = None, **kwargs):
+        kwargs.pop('agent_id', None)
         super().__init__(
             agent_id="historian",
             session_id=session_id,

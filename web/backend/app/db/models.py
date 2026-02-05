@@ -31,9 +31,9 @@ def generate_uuid() -> str:
 
 class User(Base):
     """User account model."""
-    
+
     __tablename__ = "users"
-    
+
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -42,7 +42,7 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     settings: Mapped[Optional["UserSettings"]] = relationship("UserSettings", back_populates="user", uselist=False)
     sessions: Mapped[list["ResearchSession"]] = relationship("ResearchSession", back_populates="user")
@@ -91,7 +91,7 @@ class UserSettings(Base):
     serper_api_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 联网搜索
 
     # Preferences
-    default_model: Mapped[str] = mapped_column(String(100), default="openai/gpt-4o")
+    default_model: Mapped[str] = mapped_column(String(100), default="google/gemini-2.0-flash")
     theme: Mapped[str] = mapped_column(String(20), default="dark")
     language: Mapped[str] = mapped_column(String(10), default="zh")
 
@@ -179,20 +179,20 @@ class APIUsageStats(Base):
 
 class ResearchSession(Base):
     """Research session model."""
-    
+
     __tablename__ = "research_sessions"
-    
+
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    
+
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active, archived
-    
+
     # Session data stored as JSON
     messages: Mapped[Optional[dict]] = mapped_column(JSON, default=list)
     research_results: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
-    
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

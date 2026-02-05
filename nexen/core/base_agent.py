@@ -171,11 +171,15 @@ class BaseAgent(ABC):
             # Module 3: Context Preprocessing
             if self.use_pipeline and not skip_preprocessing and combined_context:
                 self.state.status = AgentStatus.PREPROCESSING
-                preprocessing = await self.context_preprocessor.preprocess(
-                    combined_context, task
-                )
-                self.state.preprocessing = preprocessing
-                final_context = preprocessing.processed_context
+                try:
+                    preprocessing = await self.context_preprocessor.preprocess(
+                        combined_context, task
+                    )
+                    self.state.preprocessing = preprocessing
+                    final_context = preprocessing.processed_context
+                except Exception as e:
+                    logger.error(f"Preprocessing failed: {e}")
+                    raise
             else:
                 final_context = combined_context
 
@@ -244,12 +248,36 @@ class BaseAgent(ABC):
 
         # Call LLM
         start_time = datetime.now()
-        response = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            temperature=self.config.module_3.temperature,
-            max_tokens=self.config.module_3.max_tokens,
-        )
+
+        # Retry logic for rate limits
+        max_retries = 5
+        base_delay = 2
+        response = None
+
+        for attempt in range(max_retries):
+            try:
+                response = await litellm.acompletion(
+                    model=model,
+                    messages=messages,
+                    temperature=self.config.module_3.temperature,
+                    max_tokens=self.config.module_3.max_tokens,
+                )
+                break
+            except Exception as e:
+                is_rate_limit = (
+                    "429" in str(e)
+                    or "Resource exhausted" in str(e)
+                    or "RateLimitError" in str(e)
+                )
+                if is_rate_limit and attempt < max_retries - 1:
+                    delay = base_delay * (2**attempt)
+                    logger.warning(
+                        f"Rate limit hit for agent {self.agent_id}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise e
+
         duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
         # Extract result

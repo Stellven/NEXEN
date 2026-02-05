@@ -631,6 +631,29 @@ export default function WorkflowEditorPage() {
         try {
             setSaving(true);
             setError(null);
+
+            // Check if it's a template (no user_id or system template)
+            const isTemplate = !currentWorkflow.user_id;
+
+            if (isTemplate) {
+                // Clone first
+                const cloned = await workflowApi.clone(workflowId);
+                
+                // Then update the clone with current changes
+                const updated = await workflowApi.update(cloned.id, {
+                    name: cloned.name, // Keep "Copy" name or use workflowName? Let's keep default clone name logic for now or update if needed
+                    name_cn: workflowName || cloned.name_cn,
+                    description: currentWorkflow.description,
+                    nodes: currentWorkflow.nodes,
+                    edges: currentWorkflow.edges,
+                });
+
+                // Redirect to new workflow
+                router.push(`/library/workflows/${updated.id}`);
+                return;
+            }
+
+            // Normal update for user owned workflows
             const updated = await workflowApi.update(workflowId, {
                 name: currentWorkflow.name,
                 name_cn: workflowName || currentWorkflow.name_cn,

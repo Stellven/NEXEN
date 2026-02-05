@@ -11,22 +11,22 @@ Endpoints:
 - POST /workflows/{id}/clone - Clone workflow
 """
 
-from typing import List, Optional, AsyncGenerator
-from datetime import datetime
-from collections import defaultdict
-import json
 import asyncio
+import json
 import logging
+from collections import defaultdict
+from datetime import datetime
+from typing import AsyncGenerator, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
-from app.db.models import AgentWorkflow, WorkflowMission, User, Document
 from app.api.auth import get_current_active_user
-from uuid import uuid4
+from app.db.database import get_db
+from app.db.models import AgentWorkflow, Document, User, WorkflowMission
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 # =============================================================================
 # Pydantic Models
 # =============================================================================
+
 
 class NodePosition(BaseModel):
     x: float
@@ -143,25 +144,105 @@ WORKFLOW_TEMPLATES = [
         "icon": "BookOpen",
         "template_category": "research",
         "nodes": [
-            {"id": "mc", "agentType": "meta_coordinator", "position": {"x": 400, "y": 50}, "label": "Meta-Coordinator"},
-            {"id": "explorer", "agentType": "explorer", "position": {"x": 200, "y": 180}, "label": "Explorer"},
-            {"id": "historian", "agentType": "historian", "position": {"x": 400, "y": 180}, "label": "Historian"},
-            {"id": "genealogist", "agentType": "genealogist", "position": {"x": 600, "y": 180}, "label": "Genealogist"},
-            {"id": "connector", "agentType": "connector", "position": {"x": 400, "y": 310}, "label": "Connector"},
-            {"id": "critic", "agentType": "critic", "position": {"x": 400, "y": 440}, "label": "Critic"},
-            {"id": "scribe", "agentType": "scribe", "position": {"x": 400, "y": 570}, "label": "Scribe"},
-            {"id": "archivist", "agentType": "archivist", "position": {"x": 400, "y": 700}, "label": "Archivist"},
+            {
+                "id": "mc",
+                "agentType": "meta_coordinator",
+                "position": {"x": 400, "y": 50},
+                "label": "Meta-Coordinator",
+            },
+            {
+                "id": "explorer",
+                "agentType": "explorer",
+                "position": {"x": 200, "y": 180},
+                "label": "Explorer",
+            },
+            {
+                "id": "historian",
+                "agentType": "historian",
+                "position": {"x": 400, "y": 180},
+                "label": "Historian",
+            },
+            {
+                "id": "genealogist",
+                "agentType": "genealogist",
+                "position": {"x": 600, "y": 180},
+                "label": "Genealogist",
+            },
+            {
+                "id": "connector",
+                "agentType": "connector",
+                "position": {"x": 400, "y": 310},
+                "label": "Connector",
+            },
+            {
+                "id": "critic",
+                "agentType": "critic",
+                "position": {"x": 400, "y": 440},
+                "label": "Critic",
+            },
+            {
+                "id": "scribe",
+                "agentType": "scribe",
+                "position": {"x": 400, "y": 570},
+                "label": "Scribe",
+            },
+            {
+                "id": "archivist",
+                "agentType": "archivist",
+                "position": {"x": 400, "y": 700},
+                "label": "Archivist",
+            },
         ],
         "edges": [
             {"id": "e1", "sourceNodeId": "mc", "targetNodeId": "explorer", "edgeType": "data_flow"},
-            {"id": "e2", "sourceNodeId": "mc", "targetNodeId": "historian", "edgeType": "data_flow"},
-            {"id": "e3", "sourceNodeId": "mc", "targetNodeId": "genealogist", "edgeType": "data_flow"},
-            {"id": "e4", "sourceNodeId": "explorer", "targetNodeId": "connector", "edgeType": "data_flow"},
-            {"id": "e5", "sourceNodeId": "historian", "targetNodeId": "connector", "edgeType": "data_flow"},
-            {"id": "e6", "sourceNodeId": "genealogist", "targetNodeId": "connector", "edgeType": "data_flow"},
-            {"id": "e7", "sourceNodeId": "connector", "targetNodeId": "critic", "edgeType": "data_flow"},
-            {"id": "e8", "sourceNodeId": "critic", "targetNodeId": "scribe", "edgeType": "data_flow"},
-            {"id": "e9", "sourceNodeId": "scribe", "targetNodeId": "archivist", "edgeType": "data_flow"},
+            {
+                "id": "e2",
+                "sourceNodeId": "mc",
+                "targetNodeId": "historian",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e3",
+                "sourceNodeId": "mc",
+                "targetNodeId": "genealogist",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e4",
+                "sourceNodeId": "explorer",
+                "targetNodeId": "connector",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e5",
+                "sourceNodeId": "historian",
+                "targetNodeId": "connector",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e6",
+                "sourceNodeId": "genealogist",
+                "targetNodeId": "connector",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e7",
+                "sourceNodeId": "connector",
+                "targetNodeId": "critic",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e8",
+                "sourceNodeId": "critic",
+                "targetNodeId": "scribe",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e9",
+                "sourceNodeId": "scribe",
+                "targetNodeId": "archivist",
+                "edgeType": "data_flow",
+            },
         ],
     },
     {
@@ -171,22 +252,87 @@ WORKFLOW_TEMPLATES = [
         "icon": "Microscope",
         "template_category": "analysis",
         "nodes": [
-            {"id": "mc", "agentType": "meta_coordinator", "position": {"x": 400, "y": 50}, "label": "Meta-Coordinator"},
-            {"id": "explorer", "agentType": "explorer", "position": {"x": 400, "y": 180}, "label": "Explorer"},
-            {"id": "logician", "agentType": "logician", "position": {"x": 250, "y": 310}, "label": "Logician"},
-            {"id": "vision", "agentType": "vision_analyst", "position": {"x": 550, "y": 310}, "label": "Vision Analyst"},
-            {"id": "builder", "agentType": "builder", "position": {"x": 400, "y": 440}, "label": "Builder"},
-            {"id": "critic", "agentType": "critic", "position": {"x": 400, "y": 570}, "label": "Critic"},
-            {"id": "scribe", "agentType": "scribe", "position": {"x": 400, "y": 700}, "label": "Scribe"},
+            {
+                "id": "mc",
+                "agentType": "meta_coordinator",
+                "position": {"x": 400, "y": 50},
+                "label": "Meta-Coordinator",
+            },
+            {
+                "id": "explorer",
+                "agentType": "explorer",
+                "position": {"x": 400, "y": 180},
+                "label": "Explorer",
+            },
+            {
+                "id": "logician",
+                "agentType": "logician",
+                "position": {"x": 250, "y": 310},
+                "label": "Logician",
+            },
+            {
+                "id": "vision",
+                "agentType": "vision_analyst",
+                "position": {"x": 550, "y": 310},
+                "label": "Vision Analyst",
+            },
+            {
+                "id": "builder",
+                "agentType": "builder",
+                "position": {"x": 400, "y": 440},
+                "label": "Builder",
+            },
+            {
+                "id": "critic",
+                "agentType": "critic",
+                "position": {"x": 400, "y": 570},
+                "label": "Critic",
+            },
+            {
+                "id": "scribe",
+                "agentType": "scribe",
+                "position": {"x": 400, "y": 700},
+                "label": "Scribe",
+            },
         ],
         "edges": [
             {"id": "e1", "sourceNodeId": "mc", "targetNodeId": "explorer", "edgeType": "data_flow"},
-            {"id": "e2", "sourceNodeId": "explorer", "targetNodeId": "logician", "edgeType": "data_flow"},
-            {"id": "e3", "sourceNodeId": "explorer", "targetNodeId": "vision", "edgeType": "data_flow"},
-            {"id": "e4", "sourceNodeId": "logician", "targetNodeId": "builder", "edgeType": "data_flow"},
-            {"id": "e5", "sourceNodeId": "vision", "targetNodeId": "builder", "edgeType": "data_flow"},
-            {"id": "e6", "sourceNodeId": "builder", "targetNodeId": "critic", "edgeType": "data_flow"},
-            {"id": "e7", "sourceNodeId": "critic", "targetNodeId": "scribe", "edgeType": "data_flow"},
+            {
+                "id": "e2",
+                "sourceNodeId": "explorer",
+                "targetNodeId": "logician",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e3",
+                "sourceNodeId": "explorer",
+                "targetNodeId": "vision",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e4",
+                "sourceNodeId": "logician",
+                "targetNodeId": "builder",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e5",
+                "sourceNodeId": "vision",
+                "targetNodeId": "builder",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e6",
+                "sourceNodeId": "builder",
+                "targetNodeId": "critic",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e7",
+                "sourceNodeId": "critic",
+                "targetNodeId": "scribe",
+                "edgeType": "data_flow",
+            },
         ],
     },
     {
@@ -196,21 +342,86 @@ WORKFLOW_TEMPLATES = [
         "icon": "User",
         "template_category": "research",
         "nodes": [
-            {"id": "mc", "agentType": "meta_coordinator", "position": {"x": 400, "y": 50}, "label": "Meta-Coordinator"},
-            {"id": "genealogist", "agentType": "genealogist", "position": {"x": 400, "y": 180}, "label": "Genealogist"},
-            {"id": "explorer", "agentType": "explorer", "position": {"x": 200, "y": 310}, "label": "Explorer"},
-            {"id": "scout", "agentType": "social_scout", "position": {"x": 400, "y": 310}, "label": "Social Scout"},
-            {"id": "cn_spec", "agentType": "cn_specialist", "position": {"x": 600, "y": 310}, "label": "CN Specialist"},
-            {"id": "scribe", "agentType": "scribe", "position": {"x": 400, "y": 440}, "label": "Scribe"},
+            {
+                "id": "mc",
+                "agentType": "meta_coordinator",
+                "position": {"x": 400, "y": 50},
+                "label": "Meta-Coordinator",
+            },
+            {
+                "id": "genealogist",
+                "agentType": "genealogist",
+                "position": {"x": 400, "y": 180},
+                "label": "Genealogist",
+            },
+            {
+                "id": "explorer",
+                "agentType": "explorer",
+                "position": {"x": 200, "y": 310},
+                "label": "Explorer",
+            },
+            {
+                "id": "scout",
+                "agentType": "social_scout",
+                "position": {"x": 400, "y": 310},
+                "label": "Social Scout",
+            },
+            {
+                "id": "cn_spec",
+                "agentType": "cn_specialist",
+                "position": {"x": 600, "y": 310},
+                "label": "CN Specialist",
+            },
+            {
+                "id": "scribe",
+                "agentType": "scribe",
+                "position": {"x": 400, "y": 440},
+                "label": "Scribe",
+            },
         ],
         "edges": [
-            {"id": "e1", "sourceNodeId": "mc", "targetNodeId": "genealogist", "edgeType": "data_flow"},
-            {"id": "e2", "sourceNodeId": "genealogist", "targetNodeId": "explorer", "edgeType": "data_flow"},
-            {"id": "e3", "sourceNodeId": "genealogist", "targetNodeId": "scout", "edgeType": "data_flow"},
-            {"id": "e4", "sourceNodeId": "genealogist", "targetNodeId": "cn_spec", "edgeType": "data_flow"},
-            {"id": "e5", "sourceNodeId": "explorer", "targetNodeId": "scribe", "edgeType": "data_flow"},
-            {"id": "e6", "sourceNodeId": "scout", "targetNodeId": "scribe", "edgeType": "data_flow"},
-            {"id": "e7", "sourceNodeId": "cn_spec", "targetNodeId": "scribe", "edgeType": "data_flow"},
+            {
+                "id": "e1",
+                "sourceNodeId": "mc",
+                "targetNodeId": "genealogist",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e2",
+                "sourceNodeId": "genealogist",
+                "targetNodeId": "explorer",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e3",
+                "sourceNodeId": "genealogist",
+                "targetNodeId": "scout",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e4",
+                "sourceNodeId": "genealogist",
+                "targetNodeId": "cn_spec",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e5",
+                "sourceNodeId": "explorer",
+                "targetNodeId": "scribe",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e6",
+                "sourceNodeId": "scout",
+                "targetNodeId": "scribe",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e7",
+                "sourceNodeId": "cn_spec",
+                "targetNodeId": "scribe",
+                "edgeType": "data_flow",
+            },
         ],
     },
     {
@@ -220,22 +431,82 @@ WORKFLOW_TEMPLATES = [
         "icon": "TrendingUp",
         "template_category": "analysis",
         "nodes": [
-            {"id": "mc", "agentType": "meta_coordinator", "position": {"x": 400, "y": 50}, "label": "Meta-Coordinator"},
-            {"id": "explorer", "agentType": "explorer", "position": {"x": 250, "y": 180}, "label": "Explorer"},
-            {"id": "scout", "agentType": "social_scout", "position": {"x": 550, "y": 180}, "label": "Social Scout"},
-            {"id": "historian", "agentType": "historian", "position": {"x": 400, "y": 310}, "label": "Historian"},
-            {"id": "logician", "agentType": "logician", "position": {"x": 400, "y": 440}, "label": "Logician"},
-            {"id": "connector", "agentType": "connector", "position": {"x": 400, "y": 570}, "label": "Connector"},
-            {"id": "scribe", "agentType": "scribe", "position": {"x": 400, "y": 700}, "label": "Scribe"},
+            {
+                "id": "mc",
+                "agentType": "meta_coordinator",
+                "position": {"x": 400, "y": 50},
+                "label": "Meta-Coordinator",
+            },
+            {
+                "id": "explorer",
+                "agentType": "explorer",
+                "position": {"x": 250, "y": 180},
+                "label": "Explorer",
+            },
+            {
+                "id": "scout",
+                "agentType": "social_scout",
+                "position": {"x": 550, "y": 180},
+                "label": "Social Scout",
+            },
+            {
+                "id": "historian",
+                "agentType": "historian",
+                "position": {"x": 400, "y": 310},
+                "label": "Historian",
+            },
+            {
+                "id": "logician",
+                "agentType": "logician",
+                "position": {"x": 400, "y": 440},
+                "label": "Logician",
+            },
+            {
+                "id": "connector",
+                "agentType": "connector",
+                "position": {"x": 400, "y": 570},
+                "label": "Connector",
+            },
+            {
+                "id": "scribe",
+                "agentType": "scribe",
+                "position": {"x": 400, "y": 700},
+                "label": "Scribe",
+            },
         ],
         "edges": [
             {"id": "e1", "sourceNodeId": "mc", "targetNodeId": "explorer", "edgeType": "data_flow"},
             {"id": "e2", "sourceNodeId": "mc", "targetNodeId": "scout", "edgeType": "data_flow"},
-            {"id": "e3", "sourceNodeId": "explorer", "targetNodeId": "historian", "edgeType": "data_flow"},
-            {"id": "e4", "sourceNodeId": "scout", "targetNodeId": "historian", "edgeType": "data_flow"},
-            {"id": "e5", "sourceNodeId": "historian", "targetNodeId": "logician", "edgeType": "data_flow"},
-            {"id": "e6", "sourceNodeId": "logician", "targetNodeId": "connector", "edgeType": "data_flow"},
-            {"id": "e7", "sourceNodeId": "connector", "targetNodeId": "scribe", "edgeType": "data_flow"},
+            {
+                "id": "e3",
+                "sourceNodeId": "explorer",
+                "targetNodeId": "historian",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e4",
+                "sourceNodeId": "scout",
+                "targetNodeId": "historian",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e5",
+                "sourceNodeId": "historian",
+                "targetNodeId": "logician",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e6",
+                "sourceNodeId": "logician",
+                "targetNodeId": "connector",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e7",
+                "sourceNodeId": "connector",
+                "targetNodeId": "scribe",
+                "edgeType": "data_flow",
+            },
         ],
     },
     {
@@ -245,31 +516,126 @@ WORKFLOW_TEMPLATES = [
         "icon": "Globe",
         "template_category": "research",
         "nodes": [
-            {"id": "mc", "agentType": "meta_coordinator", "position": {"x": 400, "y": 50}, "label": "Meta-Coordinator"},
-            {"id": "explorer", "agentType": "explorer", "position": {"x": 100, "y": 180}, "label": "Explorer"},
-            {"id": "scout", "agentType": "social_scout", "position": {"x": 250, "y": 180}, "label": "Social Scout"},
-            {"id": "cn_spec", "agentType": "cn_specialist", "position": {"x": 400, "y": 180}, "label": "CN Specialist"},
-            {"id": "vision", "agentType": "vision_analyst", "position": {"x": 550, "y": 180}, "label": "Vision Analyst"},
-            {"id": "historian", "agentType": "historian", "position": {"x": 700, "y": 180}, "label": "Historian"},
-            {"id": "archivist", "agentType": "archivist", "position": {"x": 400, "y": 310}, "label": "Archivist"},
-            {"id": "connector", "agentType": "connector", "position": {"x": 400, "y": 440}, "label": "Connector"},
-            {"id": "critic", "agentType": "critic", "position": {"x": 400, "y": 570}, "label": "Critic"},
-            {"id": "scribe", "agentType": "scribe", "position": {"x": 400, "y": 700}, "label": "Scribe"},
+            {
+                "id": "mc",
+                "agentType": "meta_coordinator",
+                "position": {"x": 400, "y": 50},
+                "label": "Meta-Coordinator",
+            },
+            {
+                "id": "explorer",
+                "agentType": "explorer",
+                "position": {"x": 100, "y": 180},
+                "label": "Explorer",
+            },
+            {
+                "id": "scout",
+                "agentType": "social_scout",
+                "position": {"x": 250, "y": 180},
+                "label": "Social Scout",
+            },
+            {
+                "id": "cn_spec",
+                "agentType": "cn_specialist",
+                "position": {"x": 400, "y": 180},
+                "label": "CN Specialist",
+            },
+            {
+                "id": "vision",
+                "agentType": "vision_analyst",
+                "position": {"x": 550, "y": 180},
+                "label": "Vision Analyst",
+            },
+            {
+                "id": "historian",
+                "agentType": "historian",
+                "position": {"x": 700, "y": 180},
+                "label": "Historian",
+            },
+            {
+                "id": "archivist",
+                "agentType": "archivist",
+                "position": {"x": 400, "y": 310},
+                "label": "Archivist",
+            },
+            {
+                "id": "connector",
+                "agentType": "connector",
+                "position": {"x": 400, "y": 440},
+                "label": "Connector",
+            },
+            {
+                "id": "critic",
+                "agentType": "critic",
+                "position": {"x": 400, "y": 570},
+                "label": "Critic",
+            },
+            {
+                "id": "scribe",
+                "agentType": "scribe",
+                "position": {"x": 400, "y": 700},
+                "label": "Scribe",
+            },
         ],
         "edges": [
             {"id": "e1", "sourceNodeId": "mc", "targetNodeId": "explorer", "edgeType": "data_flow"},
             {"id": "e2", "sourceNodeId": "mc", "targetNodeId": "scout", "edgeType": "data_flow"},
             {"id": "e3", "sourceNodeId": "mc", "targetNodeId": "cn_spec", "edgeType": "data_flow"},
             {"id": "e4", "sourceNodeId": "mc", "targetNodeId": "vision", "edgeType": "data_flow"},
-            {"id": "e5", "sourceNodeId": "mc", "targetNodeId": "historian", "edgeType": "data_flow"},
-            {"id": "e6", "sourceNodeId": "explorer", "targetNodeId": "archivist", "edgeType": "data_flow"},
-            {"id": "e7", "sourceNodeId": "scout", "targetNodeId": "archivist", "edgeType": "data_flow"},
-            {"id": "e8", "sourceNodeId": "cn_spec", "targetNodeId": "archivist", "edgeType": "data_flow"},
-            {"id": "e9", "sourceNodeId": "vision", "targetNodeId": "archivist", "edgeType": "data_flow"},
-            {"id": "e10", "sourceNodeId": "historian", "targetNodeId": "archivist", "edgeType": "data_flow"},
-            {"id": "e11", "sourceNodeId": "archivist", "targetNodeId": "connector", "edgeType": "data_flow"},
-            {"id": "e12", "sourceNodeId": "connector", "targetNodeId": "critic", "edgeType": "data_flow"},
-            {"id": "e13", "sourceNodeId": "critic", "targetNodeId": "scribe", "edgeType": "data_flow"},
+            {
+                "id": "e5",
+                "sourceNodeId": "mc",
+                "targetNodeId": "historian",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e6",
+                "sourceNodeId": "explorer",
+                "targetNodeId": "archivist",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e7",
+                "sourceNodeId": "scout",
+                "targetNodeId": "archivist",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e8",
+                "sourceNodeId": "cn_spec",
+                "targetNodeId": "archivist",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e9",
+                "sourceNodeId": "vision",
+                "targetNodeId": "archivist",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e10",
+                "sourceNodeId": "historian",
+                "targetNodeId": "archivist",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e11",
+                "sourceNodeId": "archivist",
+                "targetNodeId": "connector",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e12",
+                "sourceNodeId": "connector",
+                "targetNodeId": "critic",
+                "edgeType": "data_flow",
+            },
+            {
+                "id": "e13",
+                "sourceNodeId": "critic",
+                "targetNodeId": "scribe",
+                "edgeType": "data_flow",
+            },
         ],
     },
 ]
@@ -277,12 +643,14 @@ WORKFLOW_TEMPLATES = [
 
 def generate_uuid():
     import uuid
+
     return str(uuid.uuid4())
 
 
 # =============================================================================
 # DAG Validation
 # =============================================================================
+
 
 def validate_dag(nodes: List[dict], edges: List[dict]) -> tuple[bool, str]:
     """
@@ -329,35 +697,45 @@ def validate_dag(nodes: List[dict], edges: List[dict]) -> tuple[bool, str]:
 # API Endpoints
 # =============================================================================
 
+
 @router.get("")
 async def list_workflows(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)
 ):
     """List all workflows for the current user."""
-    workflows = db.query(AgentWorkflow).filter(
-        AgentWorkflow.user_id == current_user.id
-    ).order_by(AgentWorkflow.updated_at.desc()).all()
+    workflows = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.user_id == current_user.id)
+        .order_by(AgentWorkflow.updated_at.desc())
+        .all()
+    )
 
-    return {
-        "workflows": [w.to_dict(include_dag=False) for w in workflows]
-    }
+    return {"workflows": [w.to_dict(include_dag=False) for w in workflows]}
 
 
 @router.get("/templates")
 async def list_templates(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)
 ):
     """List all system workflow templates."""
-    # Check if templates exist in DB, if not create them
-    templates = db.query(AgentWorkflow).filter(
-        AgentWorkflow.is_template == True
-    ).all()
+    # Sync templates from code to DB to ensure latest definitions (including models)
+    for tpl in WORKFLOW_TEMPLATES:
+        existing = (
+            db.query(AgentWorkflow)
+            .filter(AgentWorkflow.is_template == True, AgentWorkflow.name == tpl["name"])
+            .first()
+        )
 
-    if not templates:
-        # Initialize templates
-        for tpl in WORKFLOW_TEMPLATES:
+        if existing:
+            # Update existing template
+            existing.name_cn = tpl["name_cn"]
+            existing.description = tpl["description"]
+            existing.icon = tpl["icon"]
+            existing.template_category = tpl["template_category"]
+            existing.nodes = tpl["nodes"]
+            existing.edges = tpl["edges"]
+        else:
+            # Create new template
             workflow = AgentWorkflow(
                 id=generate_uuid(),
                 user_id=None,  # System template
@@ -372,22 +750,20 @@ async def list_templates(
                 status="active",
             )
             db.add(workflow)
-        db.commit()
 
-        templates = db.query(AgentWorkflow).filter(
-            AgentWorkflow.is_template == True
-        ).all()
+    db.commit()
 
-    return {
-        "templates": [t.to_dict() for t in templates]
-    }
+    # Get all templates
+    templates = db.query(AgentWorkflow).filter(AgentWorkflow.is_template == True).all()
+
+    return {"templates": [t.to_dict() for t in templates]}
 
 
 @router.post("")
 async def create_workflow(
     data: WorkflowCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Create a new workflow."""
     # Convert Pydantic models to dicts
@@ -397,10 +773,7 @@ async def create_workflow(
     # Validate DAG
     is_valid, error = validate_dag(nodes, edges)
     if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
     workflow = AgentWorkflow(
         id=generate_uuid(),
@@ -425,25 +798,17 @@ async def create_workflow(
 async def get_workflow(
     workflow_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Get a specific workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id
-    ).first()
+    workflow = db.query(AgentWorkflow).filter(AgentWorkflow.id == workflow_id).first()
 
     if not workflow:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workflow not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
 
     # Check access - user owns it or it's a template
     if workflow.user_id and workflow.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     return workflow.to_dict()
 
@@ -453,19 +818,17 @@ async def update_workflow(
     workflow_id: str,
     data: WorkflowUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Update a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workflow not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
 
     # Update fields
     if data.name is not None:
@@ -489,10 +852,7 @@ async def update_workflow(
         # Validate DAG
         is_valid, error = validate_dag(nodes, edges)
         if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
         workflow.nodes = nodes
         workflow.edges = edges
@@ -509,19 +869,17 @@ async def update_workflow(
 async def delete_workflow(
     workflow_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Delete a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workflow not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
 
     db.delete(workflow)
     db.commit()
@@ -533,25 +891,17 @@ async def delete_workflow(
 async def clone_workflow(
     workflow_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Clone a workflow (template or user's own)."""
-    source = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id
-    ).first()
+    source = db.query(AgentWorkflow).filter(AgentWorkflow.id == workflow_id).first()
 
     if not source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workflow not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
 
     # Check access
     if source.user_id and source.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     # Create clone
     clone = AgentWorkflow(
@@ -579,18 +929,20 @@ async def clone_workflow(
 # Node and Edge Management
 # =============================================================================
 
+
 @router.post("/{workflow_id}/nodes")
 async def add_node(
     workflow_id: str,
     node: WorkflowNode,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Add a node to a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -613,13 +965,14 @@ async def update_node(
     node_id: str,
     node: WorkflowNode,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Update a node in a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -650,13 +1003,14 @@ async def delete_node(
     workflow_id: str,
     node_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Delete a node and its connected edges from a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -666,7 +1020,8 @@ async def delete_node(
 
     # Remove connected edges
     edges = [
-        e for e in (workflow.edges or [])
+        e
+        for e in (workflow.edges or [])
         if e.get("sourceNodeId") != node_id and e.get("targetNodeId") != node_id
     ]
 
@@ -686,13 +1041,14 @@ async def add_edge(
     workflow_id: str,
     edge: WorkflowEdge,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Add an edge to a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -721,13 +1077,14 @@ async def update_edge(
     edge_id: str,
     edge: WorkflowEdge,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Update an edge in a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -763,13 +1120,14 @@ async def delete_edge(
     workflow_id: str,
     edge_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Delete an edge from a workflow."""
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id,
-        AgentWorkflow.user_id == current_user.id
-    ).first()
+    workflow = (
+        db.query(AgentWorkflow)
+        .filter(AgentWorkflow.id == workflow_id, AgentWorkflow.user_id == current_user.id)
+        .first()
+    )
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -789,6 +1147,7 @@ async def delete_edge(
 # =============================================================================
 # Mission Pydantic Models
 # =============================================================================
+
 
 class SubTaskCreate(BaseModel):
     id: str
@@ -825,17 +1184,16 @@ class SaveToLibraryRequest(BaseModel):
 # Mission API Endpoints
 # =============================================================================
 
+
 @router.get("/{workflow_id}/missions")
 async def list_missions(
     workflow_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """List all missions for a workflow."""
     # Verify workflow access
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id
-    ).first()
+    workflow = db.query(AgentWorkflow).filter(AgentWorkflow.id == workflow_id).first()
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -844,14 +1202,16 @@ async def list_missions(
     if workflow.user_id and workflow.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    missions = db.query(WorkflowMission).filter(
-        WorkflowMission.workflow_id == workflow_id,
-        WorkflowMission.user_id == current_user.id
-    ).order_by(WorkflowMission.created_at.desc()).all()
+    missions = (
+        db.query(WorkflowMission)
+        .filter(
+            WorkflowMission.workflow_id == workflow_id, WorkflowMission.user_id == current_user.id
+        )
+        .order_by(WorkflowMission.created_at.desc())
+        .all()
+    )
 
-    return {
-        "missions": [m.to_dict() for m in missions]
-    }
+    return {"missions": [m.to_dict() for m in missions]}
 
 
 @router.post("/{workflow_id}/missions")
@@ -859,13 +1219,11 @@ async def create_mission(
     workflow_id: str,
     data: MissionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Create a new mission for a workflow."""
     # Verify workflow access
-    workflow = db.query(AgentWorkflow).filter(
-        AgentWorkflow.id == workflow_id
-    ).first()
+    workflow = db.query(AgentWorkflow).filter(AgentWorkflow.id == workflow_id).first()
 
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -901,14 +1259,18 @@ async def get_mission(
     workflow_id: str,
     mission_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Get a specific mission."""
-    mission = db.query(WorkflowMission).filter(
-        WorkflowMission.id == mission_id,
-        WorkflowMission.workflow_id == workflow_id,
-        WorkflowMission.user_id == current_user.id
-    ).first()
+    mission = (
+        db.query(WorkflowMission)
+        .filter(
+            WorkflowMission.id == mission_id,
+            WorkflowMission.workflow_id == workflow_id,
+            WorkflowMission.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
@@ -922,14 +1284,18 @@ async def update_mission(
     mission_id: str,
     data: MissionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Update a mission (status, progress, sub_tasks, result)."""
-    mission = db.query(WorkflowMission).filter(
-        WorkflowMission.id == mission_id,
-        WorkflowMission.workflow_id == workflow_id,
-        WorkflowMission.user_id == current_user.id
-    ).first()
+    mission = (
+        db.query(WorkflowMission)
+        .filter(
+            WorkflowMission.id == mission_id,
+            WorkflowMission.workflow_id == workflow_id,
+            WorkflowMission.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
@@ -964,14 +1330,18 @@ async def delete_mission(
     workflow_id: str,
     mission_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Delete a mission."""
-    mission = db.query(WorkflowMission).filter(
-        WorkflowMission.id == mission_id,
-        WorkflowMission.workflow_id == workflow_id,
-        WorkflowMission.user_id == current_user.id
-    ).first()
+    mission = (
+        db.query(WorkflowMission)
+        .filter(
+            WorkflowMission.id == mission_id,
+            WorkflowMission.workflow_id == workflow_id,
+            WorkflowMission.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
@@ -988,14 +1358,18 @@ async def save_mission_to_library(
     mission_id: str,
     data: SaveToLibraryRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """Save mission result to Library as a document."""
-    mission = db.query(WorkflowMission).filter(
-        WorkflowMission.id == mission_id,
-        WorkflowMission.workflow_id == workflow_id,
-        WorkflowMission.user_id == current_user.id
-    ).first()
+    mission = (
+        db.query(WorkflowMission)
+        .filter(
+            WorkflowMission.id == mission_id,
+            WorkflowMission.workflow_id == workflow_id,
+            WorkflowMission.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
@@ -1007,7 +1381,11 @@ async def save_mission_to_library(
     content = generate_mission_document(mission)
 
     # Create document in library
-    doc_name = f"Mission: {mission.description[:50]}..." if len(mission.description) > 50 else f"Mission: {mission.description}"
+    doc_name = (
+        f"Mission: {mission.description[:50]}..."
+        if len(mission.description) > 50
+        else f"Mission: {mission.description}"
+    )
 
     document = Document(
         id=str(uuid4()),
@@ -1015,7 +1393,7 @@ async def save_mission_to_library(
         folder_id=data.folder_id,
         name=doc_name,
         file_type="md",
-        file_size=len(content.encode('utf-8')),
+        file_size=len(content.encode("utf-8")),
         parsed_content=content,
         parse_status="completed",
         embedding_status="pending",
@@ -1025,17 +1403,14 @@ async def save_mission_to_library(
             "mission_id": mission.id,
             "workflow_id": workflow_id,
             "leader_type": mission.leader_type,
-        }
+        },
     )
 
     db.add(document)
     db.commit()
     db.refresh(document)
 
-    return {
-        "document_id": document.id,
-        "message": "Mission saved to library successfully"
-    }
+    return {"document_id": document.id, "message": "Mission saved to library successfully"}
 
 
 def generate_mission_document(mission: WorkflowMission) -> str:
@@ -1056,10 +1431,18 @@ def generate_mission_document(mission: WorkflowMission) -> str:
 
     if mission.sub_tasks:
         for i, task in enumerate(mission.sub_tasks, 1):
-            status_emoji = "✅" if task.get("status") == "completed" else "❌" if task.get("status") == "failed" else "⏳"
+            status_emoji = (
+                "✅"
+                if task.get("status") == "completed"
+                else "❌"
+                if task.get("status") == "failed"
+                else "⏳"
+            )
             lines.append(f"### {i}. {task.get('title', 'Unknown Task')} {status_emoji}")
             lines.append("")
-            lines.append(f"**Agent**: {task.get('agent_name', 'Unknown')} (`{task.get('agent_type', 'unknown')}`)")
+            lines.append(
+                f"**Agent**: {task.get('agent_name', 'Unknown')} (`{task.get('agent_type', 'unknown')}`)"
+            )
 
             if task.get("duration_ms"):
                 lines.append(f"**耗时**: {task['duration_ms'] / 1000:.1f}s")
@@ -1081,13 +1464,15 @@ def generate_mission_document(mission: WorkflowMission) -> str:
             lines.append("")
 
     if mission.result:
-        lines.extend([
-            "---",
-            "",
-            "## 最终结果",
-            "",
-            mission.result,
-        ])
+        lines.extend(
+            [
+                "---",
+                "",
+                "## 最终结果",
+                "",
+                mission.result,
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -1095,6 +1480,7 @@ def generate_mission_document(mission: WorkflowMission) -> str:
 # =============================================================================
 # Agent Task Builder
 # =============================================================================
+
 
 def _build_agent_task(
     agent_type: str,
@@ -1365,25 +1751,32 @@ def _build_agent_task(
 # Mission Execution API (SSE)
 # =============================================================================
 
+
 @router.post("/{workflow_id}/missions/{mission_id}/execute")
 async def execute_mission(
     workflow_id: str,
     mission_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ):
     """
     Execute a workflow mission using real AI agents.
     Returns Server-Sent Events (SSE) for real-time progress updates.
     """
-    logger.info(f"Starting mission execution: workflow={workflow_id}, mission={mission_id}, user={current_user.id}")
+    logger.info(
+        f"Starting mission execution: workflow={workflow_id}, mission={mission_id}, user={current_user.id}"
+    )
 
     # Verify mission exists
-    mission = db.query(WorkflowMission).filter(
-        WorkflowMission.id == mission_id,
-        WorkflowMission.workflow_id == workflow_id,
-        WorkflowMission.user_id == current_user.id
-    ).first()
+    mission = (
+        db.query(WorkflowMission)
+        .filter(
+            WorkflowMission.id == mission_id,
+            WorkflowMission.workflow_id == workflow_id,
+            WorkflowMission.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not mission:
         logger.warning(f"Mission not found: {mission_id}")
@@ -1420,6 +1813,10 @@ async def execute_mission(
         accumulated_results = ""
 
         for i, task in enumerate(sub_tasks):
+            # Add pacing delay to mitigate rate limits
+            if i > 0:
+                await asyncio.sleep(2)
+
             task_id = task.get("id", f"task_{i}")
             agent_type = task.get("agent_type", "explorer")
             agent_name = task.get("agent_name", agent_type)
@@ -1430,7 +1827,7 @@ async def execute_mission(
 
             try:
                 start_time = datetime.utcnow()
-                logger.info(f"Step {i+1}/{total_steps}: Executing {agent_type} ({agent_name})")
+                logger.info(f"Step {i + 1}/{total_steps}: Executing {agent_type} ({agent_name})")
 
                 # Build comprehensive task description based on agent type
                 agent_task = _build_agent_task(
@@ -1445,18 +1842,59 @@ async def execute_mission(
 
                 logger.debug(f"Agent task length: {len(agent_task)} chars")
 
+                # Get node config for this agent
+                # Node structure varies: check both root level and data property
+                logger.info(f"Looking for config for agent_type: {agent_type}")
+
+                # DEBUG: Dump first 3 nodes to understand structure (only on first iteration)
+                if i == 0 and workflow.nodes:
+                    for idx, n in enumerate(workflow.nodes[:3]):
+                        import json as json_mod
+
+                        logger.info(f"DEBUG Node {idx}: {json_mod.dumps(n, default=str)[:500]}")
+
+                # Find the node for this agent type - check both root and data.agentType
+                node_config = {}
+                for n in workflow.nodes or []:
+                    node_agent_type = n.get("agentType") or n.get("data", {}).get("agentType")
+                    if node_agent_type == agent_type:
+                        # Config can be at root, in data, or in data.config
+                        node_config = n.get("config") or n.get("data", {}).get("config") or {}
+                        break
+
+                # Use node config roleModel if available, otherwise fall back to user's default_model
+                model_override = node_config.get("roleModel")
+                if not model_override:
+                    # Get user's default model from settings
+                    from app.db.models import UserSettings
+
+                    user_settings = (
+                        db.query(UserSettings)
+                        .filter(UserSettings.user_id == current_user.id)
+                        .first()
+                    )
+                    if user_settings and user_settings.default_model:
+                        model_override = user_settings.default_model
+                        logger.info(f"Using user's default_model as fallback: {model_override}")
+                logger.info(f"Found model_override: {model_override}")
+
                 # Execute agent with full context
                 result = await agent_service.execute_agent(
                     agent_id=agent_type,
                     task=agent_task,
                     session_id=mission_id,
-                    context=mission_context if i == 0 else f"{mission_context}\n\n# 之前的研究结果\n{accumulated_results}",
+                    context=mission_context
+                    if i == 0
+                    else f"{mission_context}\n\n# 之前的研究结果\n{accumulated_results}",
+                    model_override=model_override,
                 )
 
                 end_time = datetime.utcnow()
                 duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-                logger.info(f"Step {i+1}/{total_steps}: Completed in {duration_ms}ms, {result.tokens_used} tokens, output length: {len(result.result)} chars")
+                logger.info(
+                    f"Step {i + 1}/{total_steps}: Completed in {duration_ms}ms, {result.tokens_used} tokens, output length: {len(result.result)} chars"
+                )
 
                 # Update task in sub_tasks
                 task["status"] = "completed"
@@ -1467,7 +1905,9 @@ async def execute_mission(
                 task["duration_ms"] = duration_ms
 
                 # Add to accumulated results for next agent
-                accumulated_results += f"\n\n## {agent_name} ({agent_type}) 的输出:\n{result.result}"
+                accumulated_results += (
+                    f"\n\n## {agent_name} ({agent_type}) 的输出:\n{result.result}"
+                )
 
                 # Send completion event
                 yield f"data: {json.dumps({'type': 'step_complete', 'step': i, 'agent_type': agent_type, 'output': result.result, 'duration_ms': duration_ms, 'tokens_used': result.tokens_used})}\n\n"
@@ -1505,10 +1945,31 @@ async def execute_mission(
 
 请确保报告逻辑清晰、内容完整、结论有据可依。
 """
+            # Get Meta-Coordinator config for synthesis
+            # Check both root level and data property for config
+            mc_node_config = {}
+            for n in workflow.nodes or []:
+                node_agent_type = n.get("agentType") or n.get("data", {}).get("agentType")
+                if node_agent_type == "meta_coordinator":
+                    mc_node_config = n.get("config") or n.get("data", {}).get("config") or {}
+                    break
+            mc_model_override = mc_node_config.get("roleModel")
+            # Fall back to user's default model if no node config
+            if not mc_model_override:
+                from app.db.models import UserSettings
+
+                user_settings = (
+                    db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
+                )
+                if user_settings and user_settings.default_model:
+                    mc_model_override = user_settings.default_model
+            logger.info(f"Meta-Coordinator model_override: {mc_model_override}")
+
             synthesis_result = await agent_service.execute_agent(
                 agent_id="meta_coordinator",
                 task=synthesis_task,
                 session_id=mission_id,
+                model_override=mc_model_override,
             )
             final_result = synthesis_result.result
         except Exception as e:
@@ -1530,5 +1991,5 @@ async def execute_mission(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
