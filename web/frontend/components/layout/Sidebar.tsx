@@ -223,7 +223,7 @@ export function Sidebar({ isCollapsed = false, onCollapse }: SidebarProps) {
                                 AI TEAMS
                             </span>
                             <span className="text-[10px] font-bold text-red-500 mt-1 block">
-                                v0.0.6-TEST
+                                v0.0.8-TESTing if the commit broke the app
                             </span>
                         </div>
                     )}

@@ -16,6 +16,7 @@ from typing import Optional
 import litellm
 
 from nexen.config.agents import AgentConfig, Module3Config
+from nexen.config.models import resolve_model
 from nexen.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -96,10 +97,7 @@ class ContextPreprocessor:
         self.settings = get_settings()
 
         # Use agent's role model or configured preprocessor model
-        self.model = (
-            self.module_config.preprocessor_model
-            or agent_config.role_model
-        )
+        self.model = resolve_model(self.module_config.preprocessor_model or agent_config.role_model)
 
     async def preprocess(
         self,
@@ -181,7 +179,9 @@ class ContextPreprocessor:
                 processed_context=processed,
                 original_tokens=original_tokens,
                 processed_tokens=processed_tokens,
-                compression_ratio=processed_tokens / original_tokens if original_tokens > 0 else 1.0,
+                compression_ratio=processed_tokens / original_tokens
+                if original_tokens > 0
+                else 1.0,
                 conflicts_detected=conflicts,
                 gaps_identified=gaps,
                 tasks_applied=tasks_to_apply,
@@ -212,7 +212,7 @@ class ContextPreprocessor:
 
         try:
             response = await litellm.acompletion(
-                model="gemini-2-flash",  # Use fast model for quick dedupe
+                model=resolve_model("gemini-flash"),  # Use fast model for quick dedupe
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=len(context) // 2,

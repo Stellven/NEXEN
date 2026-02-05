@@ -17,6 +17,7 @@ from typing import Any, Optional
 import litellm
 
 from nexen.config.agents import AgentConfig, Module1Config
+from nexen.config.models import resolve_model
 from nexen.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,7 @@ class PromptReviewResult:
 
                 # Parse scores
                 if ":" in line and any(
-                    key in line.lower()
-                    for key in ["role", "task", "output", "context", "safety"]
+                    key in line.lower() for key in ["role", "task", "output", "context", "safety"]
                 ):
                     key, value = line.rsplit(":", 1)
                     try:
@@ -140,75 +140,6 @@ class GeneratedPrompt:
     review_history: list[PromptReviewResult] = field(default_factory=list)
 
 
-class PromptPipeline:
-    """
-    Module 1: Prompt Pipeline
-
-    Generates, reviews, and refines prompts for agent execution.
-    """
-
-    def __init__(self, agent_config: AgentConfig):
-        self.agent_config = agent_config
-        self.module_config: Module1Config = agent_config.module_1
-        self.settings = get_settings()
-
-    async def generate_prompt(
-        self,
-        task_description: str,
-        context: Optional[str] = None,
-    ) -> GeneratedPrompt:
-        """
-        Generate an optimized prompt through the pipeline.
-
-        Args:
-            task_description: The task to generate a prompt for
-            context: Optional context to include
-
-        Returns:
-            GeneratedPrompt with system and user prompts
-        """
-        # Step 1: Generate initial prompt
-        system_prompt, user_prompt = await self._generate_initial_prompt(
-            task_description, context
-        )
-
-        review_history = []
-        iterations = 0
-
-        # Iterate until passing or max iterations
-        while iterations < self.module_config.max_iterations:
-            iterations += 1
-
-            # Step 2: Review the prompt
-            review = await self._review_prompt(system_prompt, user_prompt)
-            review_history.append(review)
-
-            if review.passed:
-                logger.info(
-                    f"Prompt passed review on iteration {iterations} "
-                    f"with score {review.total_score}/50"
-                )
-                break
-
-            # Step 3: Refine if not passing
-            logger.info(
-                f"Prompt review iteration {iterations}: "
-                f"score {review.total_score}/50, refining..."
-            )
-            system_prompt, user_prompt = await self._refine_prompt(
-                system_prompt, user_prompt, review
-            )
-
-        final_review = review_history[-1] if review_history else None
-
-        return GeneratedPrompt(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            iterations=iterations,
-            final_score=final_review.total_score if final_review else 0,
-            review_history=review_history,
-        )
-
 def extract_quota_info(exc: Exception) -> dict:
     info = {}
 
@@ -240,40 +171,103 @@ def extract_quota_info(exc: Exception) -> dict:
 
     return info
 
-async def _call_llm_with_retry(self, **kwargs) -> Any:
-    max_retries = 5
-    base_delay = 2
 
-    for attempt in range(max_retries):
-        try:
-            return await litellm.acompletion(**kwargs)
+class PromptPipeline:
+    """
+    Module 1: Prompt Pipeline
 
-        except Exception as e:
-            quota_info = extract_quota_info(e)
+    Generates, reviews, and refines prompts for agent execution.
+    """
 
-            is_rate_limit = (
-                "429" in str(e)
-                or quota_info.get("status") == "RESOURCE_EXHAUSTED"
+    def __init__(self, agent_config: AgentConfig):
+        self.agent_config = agent_config
+        self.module_config: Module1Config = agent_config.module_1
+        self.settings = get_settings()
+
+    async def generate_prompt(
+        self,
+        task_description: str,
+        context: Optional[str] = None,
+    ) -> GeneratedPrompt:
+        """
+        Generate an optimized prompt through the pipeline.
+
+        Args:
+            task_description: The task to generate a prompt for
+            context: Optional context to include
+
+        Returns:
+            GeneratedPrompt with system and user prompts
+        """
+        # Step 1: Generate initial prompt
+        system_prompt, user_prompt = await self._generate_initial_prompt(task_description, context)
+
+        review_history = []
+        iterations = 0
+
+        # Iterate until passing or max iterations
+        while iterations < self.module_config.max_iterations:
+            iterations += 1
+
+            # Step 2: Review the prompt
+            review = await self._review_prompt(system_prompt, user_prompt)
+            review_history.append(review)
+
+            if review.passed:
+                logger.info(
+                    f"Prompt passed review on iteration {iterations} "
+                    f"with score {review.total_score}/50"
+                )
+                break
+
+            # Step 3: Refine if not passing
+            logger.info(
+                f"Prompt review iteration {iterations}: score {review.total_score}/50, refining..."
+            )
+            system_prompt, user_prompt = await self._refine_prompt(
+                system_prompt, user_prompt, review
             )
 
-            if is_rate_limit and attempt < max_retries - 1:
-                delay = base_delay * (2**attempt)
+        final_review = review_history[-1] if review_history else None
 
-                logger.warning(
-                    "Rate limit hit | "
-                    f"metric={quota_info.get('quotaMetric')} | "
-                    f"quotaId={quota_info.get('quotaId')} | "
-                    f"model={quota_info.get('quotaDimensions', {}).get('model')} | "
-                    f"limit={quota_info.get('quotaValue')} | "
-                    f"retryDelay={quota_info.get('retryDelay')} | "
-                    f"backoff={delay}s | "
-                    f"attempt={attempt + 1}/{max_retries}"
-                )
+        return GeneratedPrompt(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            iterations=iterations,
+            final_score=final_review.total_score if final_review else 0,
+            review_history=review_history,
+        )
 
-                await asyncio.sleep(delay)
-            else:
-                raise
+    async def _call_llm_with_retry(self, **kwargs) -> Any:
+        max_retries = 5
+        base_delay = 2
 
+        for attempt in range(max_retries):
+            try:
+                return await litellm.acompletion(**kwargs)
+
+            except Exception as e:
+                quota_info = extract_quota_info(e)
+
+                is_rate_limit = "429" in str(e) or quota_info.get("status") == "RESOURCE_EXHAUSTED"
+
+                if is_rate_limit and attempt < max_retries - 1:
+                    delay = base_delay * (2**attempt)
+
+                    logger.warning(
+                        "Rate limit hit | "
+                        f"metric={quota_info.get('quotaMetric')} | "
+                        f"quotaId={quota_info.get('quotaId')} | "
+                        f"model={quota_info.get('quotaDimensions', {}).get('model')} | "
+                        f"limit={quota_info.get('quotaValue')} | "
+                        f"retryDelay={quota_info.get('retryDelay')} | "
+                        f"backoff={delay}s | "
+                        f"attempt={attempt + 1}/{max_retries}"
+                    )
+
+                    await asyncio.sleep(delay)
+                else:
+                    raise
 
     async def _generate_initial_prompt(
         self,
@@ -310,7 +304,7 @@ async def _call_llm_with_retry(self, **kwargs) -> Any:
 """
 
         response = await self._call_llm_with_retry(
-            model=self.module_config.generator_model,
+            model=resolve_model(self.module_config.generator_model),
             messages=[{"role": "user", "content": generation_prompt}],
             temperature=0.7,
             max_tokens=2000,
@@ -364,16 +358,14 @@ safety: [分数]/10
 """
 
         response = await self._call_llm_with_retry(
-            model=self.module_config.reviewer_model,
+            model=resolve_model(self.module_config.reviewer_model),
             messages=[{"role": "user", "content": review_prompt}],
             temperature=0.3,
             max_tokens=1000,
         )
 
         content = response.choices[0].message.content or ""
-        return PromptReviewResult.from_llm_response(
-            content, self.module_config.pass_threshold
-        )
+        return PromptReviewResult.from_llm_response(content, self.module_config.pass_threshold)
 
     async def _refine_prompt(
         self,
@@ -402,7 +394,7 @@ safety: [分数]/10
 {review.feedback}
 
 ## 改进建议
-{chr(10).join('- ' + s for s in review.suggestions)}
+{chr(10).join("- " + s for s in review.suggestions)}
 
 ---
 
@@ -416,7 +408,7 @@ safety: [分数]/10
 """
 
         response = await self._call_llm_with_retry(
-            model=self.module_config.refiner_model,
+            model=resolve_model(self.module_config.refiner_model),
             messages=[{"role": "user", "content": refine_prompt}],
             temperature=0.5,
             max_tokens=2000,
@@ -450,7 +442,7 @@ safety: [分数]/10
         return f"""{self.agent_config.persona}
 
 ## 你的职责
-{chr(10).join('- ' + r for r in self.agent_config.responsibilities)}
+{chr(10).join("- " + r for r in self.agent_config.responsibilities)}
 
 ## 输出要求
 - 使用结构化的Markdown格式
